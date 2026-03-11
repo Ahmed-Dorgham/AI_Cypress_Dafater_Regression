@@ -1,0 +1,21 @@
+{
+  "name": "cypress_datamigrationproject",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Standalone Cypress migration of Selenium DataMigrationProject",
+  "scripts": {
+    "cypress:open": "set CYPRESS_VERIFY_TIMEOUT=120000&& set ELECTRON_RUN_AS_NODE=&& cypress open --e2e --browser electron",
+    "cypress:run": "set CYPRESS_VERIFY_TIMEOUT=120000&& set ELECTRON_RUN_AS_NODE=&& cypress run --browser electron",
+    "cypress:open:firefox": "set CYPRESS_VERIFY_TIMEOUT=120000&& set ELECTRON_RUN_AS_NODE=&& cypress open --e2e --browser firefox",
+    "cypress:run:firefox": "set CYPRESS_VERIFY_TIMEOUT=120000&& set ELECTRON_RUN_AS_NODE=&& cypress run --browser firefox",
+    "cypress:open:chrome": "set CYPRESS_VERIFY_TIMEOUT=120000&& set ELECTRON_RUN_AS_NODE=&& cypress open --e2e --browser chrome",
+    "cypress:run:chrome": "set CYPRESS_VERIFY_TIMEOUT=120000&& set ELECTRON_RUN_AS_NODE=&& cypress run --browser chrome",
+    "cypress:verify": "set CYPRESS_VERIFY_TIMEOUT=120000&& set ELECTRON_RUN_AS_NODE=&& cypress verify"
+  },
+  "devDependencies": {
+    "cypress-xpath": "^2.0.1"
+  },
+  "dependencies": {
+    "cypress": "^10.11.0"
+  }
+}
