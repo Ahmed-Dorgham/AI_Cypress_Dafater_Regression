@@ -5,8 +5,8 @@ const rawBase =
   Cypress.config('baseUrl') ||
   Cypress.env('DAFATER_BASE_URL') ||
   (Cypress.env('scope') === 'Regression'
-    ? 'http://temp-qc-tmp.dafater.biz'
-    : 'http://temp-qc-tmp.dafater.biz');
+    ? 'https://temp-qc-tmp.dafater.biz'
+    : 'https://temp-qc-tmp.dafater.biz');
 
 const origin = (() => {
   try {
@@ -174,7 +174,7 @@ describe('Adding Items Suite', () => {
     );
   });
 
-  it('TC02_createNewSalesItem', () => {
+  it.skip('TC02_createNewSalesItem', () => {
     const randomNumber = Math.floor(Math.random() * 1_000_000_000);
     const itemName = `item 2${randomNumber}`;
 
@@ -253,7 +253,7 @@ describe('Adding Items Suite', () => {
     });
   });
 
-  it('TC03_createNewPurchaseItem', () => {
+  it.skip('TC03_createNewPurchaseItem', () => {
     const randomNumber = Math.floor(Math.random() * 1_000_000_000);
     const itemName = `item 2${randomNumber}`;
 

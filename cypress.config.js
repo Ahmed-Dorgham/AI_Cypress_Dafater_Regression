@@ -1,7 +1,8 @@
 ﻿const { defineConfig } = require('cypress');
 
 const scope = process.env.DAFATER_SCOPE || 'Regression';
-const baseUrl = process.env.DAFATER_BASE_URL || 'http://temp-qc-tmp.dafater.biz';
+const baseUrl = process.env.DAFATER_BASE_URL || 'https://temp-qc-tmp.dafater.biz';
+const forceFirefox110 = process.env.DAFATER_FORCE_FIREFOX_110 === '1';
 
 module.exports = defineConfig({
   e2e: {
@@ -13,19 +14,22 @@ module.exports = defineConfig({
     env: {
       scope,
     },
-    // Add this block to force Cypress to use Firefox 110
     setupNodeEvents(on, config) {
       return config;
     },
   },
-  browsers: [
-    {
-      name: 'firefox110',
-      family: 'firefox',
-      displayName: 'Firefox 110',
-      version: '110.0',
-      majorVersion: 110,
-      path: 'C:\\Firefox110\\firefox.exe', // Make sure this is the actual path
-    },
-  ],
+  ...(forceFirefox110
+    ? {
+        browsers: [
+          {
+            name: 'firefox110',
+            family: 'firefox',
+            displayName: 'Firefox 110',
+            version: '110.0',
+            majorVersion: 110,
+            path: 'C:\\Firefox110\\firefox.exe',
+          },
+        ],
+      }
+    : {}),
 });
