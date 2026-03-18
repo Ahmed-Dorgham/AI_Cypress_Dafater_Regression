@@ -30,11 +30,11 @@ pipeline {
         stage('Run Cypress Tests') {
             steps {
                 echo "Running Cypress tests on Chrome (headed, specific spec)..."
-                bat '''
+bat '''
 set TERM=dumb
 set NO_COLOR=1
 set FORCE_COLOR=0
-npx cypress run --browser chrome --headed --spec "cypress/e2e/addingItems.cy.js" --reporter spec --config baseUrl=https://temp-qc-tmp.dafater.biz,defaultCommandTimeout=10000,pageLoadTimeout=30000,retries=0
+npx cypress run --quiet --browser chrome --headed --spec "cypress/e2e/addingItems.cy.js" --reporter dot --config baseUrl=https://temp-qc-tmp.dafater.biz,defaultCommandTimeout=10000,pageLoadTimeout=30000,retries=0
 '''
             }
         }
