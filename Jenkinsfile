@@ -30,7 +30,8 @@ pipeline {
         stage('Run Cypress Tests') {
             steps {
                 echo "Running Cypress tests on Chrome (headed, specific spec)..."
-                bat 'npx cypress run --browser chrome --headed --spec "cypress/e2e/addingItems.cy.js"'
+              bat 'chcp 65001'
+bat 'npx cypress run --browser chrome --headed --spec "cypress/e2e/addingItems.cy.js"'
             }
         }
     }
