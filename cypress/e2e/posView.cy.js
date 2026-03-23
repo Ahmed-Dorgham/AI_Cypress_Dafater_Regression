@@ -48,7 +48,14 @@ describe('PosViewTest (Migrated from Selenium)', () => {
     const env = getMigrationEnv();
     const itemCode = `item ${Date.now()}`;
 
-    login({ url: env.v5Url, username: env.user5, password: env.pass5 });
+     cy.log('open login');
+    cy.visit(`${baseUrl}/#login`);
+
+    cy.log('enter credentials');
+    cy.get('#login_email, #login_id', { timeout: 20000 }).type(creds.username, { force: true });
+    cy.get('#login_password, #pass', { timeout: 20000 }).type(creds.password, { force: true });
+    cy.get('#login_btn').click();
+    waitForOverlay();
     createItem(itemCode);
     addItemPriceStandardSelling(itemCode, env.itemPrice);
 
