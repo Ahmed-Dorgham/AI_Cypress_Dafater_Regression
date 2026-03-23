@@ -41,7 +41,7 @@ pipeline {
                 set TERM=dumb
                 set NO_COLOR=1
                 set FORCE_COLOR=0
-                npx cypress run --quiet --browser chrome --headed --spec "cypress/e2e/addingItems.cy.js" --reporter dot
+                npx cypress run --quiet --browser chrome --headed --spec "cypress/e2e/posView.cy.js" --reporter dot
                 '''
             }
         }
