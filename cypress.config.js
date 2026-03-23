@@ -1,12 +1,13 @@
-﻿const { defineConfig } = require('cypress');
+const { defineConfig } = require('cypress');
 
 const scope = process.env.DAFATER_SCOPE || 'Regression';
-const baseUrl = process.env.DAFATER_BASE_URL || 'https://temp-qc-tmp.dafater.biz';
+// Force HTTPS, fallback to default URL
+const baseUrl = (process.env.DAFATER_BASE_URL || 'https://temp-qc-tmp.dafater.biz').replace(/^http:/, 'https:');
 const forceFirefox110 = process.env.DAFATER_FORCE_FIREFOX_110 === '1';
 
 module.exports = defineConfig({
   e2e: {
-    baseUrl,
+    baseUrl, // always HTTPS
     defaultCommandTimeout: 40000,
     pageLoadTimeout: 120000,
     video: false,
@@ -26,9 +27,14 @@ module.exports = defineConfig({
         }
         return launchOptions;
       });
+
+      // Ensure the baseUrl in Cypress config is HTTPS
+      config.baseUrl = baseUrl;
+
       return config;
     },
   },
+
   ...(forceFirefox110
     ? {
         browsers: [
@@ -38,7 +44,7 @@ module.exports = defineConfig({
             displayName: 'Firefox 110',
             version: '110.0',
             majorVersion: 110,
-            path: 'C:\Program Files\Mozilla Firefox\firefox.exe',
+            path: 'C:\\Program Files\\Mozilla Firefox\\firefox.exe',
           },
         ],
       }
