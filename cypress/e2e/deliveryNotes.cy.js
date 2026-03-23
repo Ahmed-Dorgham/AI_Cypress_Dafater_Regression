@@ -18,6 +18,7 @@ import {
   saveAndSubmitPurchaseReceipt,
   selectDeliveryNoteCustomer,
   selectDeliveryNoteItem,
+  saveAndSubmitDeliveryNote,
   Saveandsubmit as saveAndSubmit,
 } from '../support/migrationHelpers';
 
@@ -52,9 +53,9 @@ describe('DeliveryNotesTest (Migrated from Selenium)', () => {
 
     openDeliveryNotesList();
     clickNewPrimaryAction();
-    selectDeliveryNoteCustomer();
-    selectDeliveryNoteItem(itemCode);
-    saveAndSubmit();
+     selectDeliveryNoteCustomer();
+        selectDeliveryNoteItem(itemCode);
+        saveAndSubmitDeliveryNote();
 
     cy.get('span.label.label-success:visible', { timeout: 60000 })
       .first()

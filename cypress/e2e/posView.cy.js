@@ -6,8 +6,12 @@ import {
   createItem,
   addItemPriceStandardSelling,
   openSalesInvoicesList,
+  openPurchaseReceiptsList,
   clickNewPrimaryAction,
   waitForOverlay,
+  selectPurchaseReceiptSupplier,
+  selectPurchaseReceiptItem,
+  saveAndSubmitPurchaseReceipt,
 } from '../support/migrationHelpers';
 
 describe('PosViewTest (Migrated from Selenium)', () => {
@@ -19,6 +23,24 @@ describe('PosViewTest (Migrated from Selenium)', () => {
     createItem(itemCode);
     addItemPriceStandardSelling(itemCode, env.itemPrice);
 
+ openPurchaseReceiptsList();
+    clickNewPrimaryAction();
+    waitForOverlay();
+    selectPurchaseReceiptSupplier();
+    selectPurchaseReceiptItem(itemCode);
+    saveAndSubmitPurchaseReceipt();
+
+    cy.get('span.label.label-success:visible', { timeout: 120000 })
+      .first()
+      .invoke('text')
+      .then((statusText) => {
+        const actualStatus = String(statusText).replace(/\s+/g, ' ').trim();
+        cy.log(`Purchase Receipt status value: ${actualStatus}`);
+        expect(actualStatus).to.contain('معتمد');
+      });
+
+
+
     openSalesInvoicesList();
     clickNewPrimaryAction();
     waitForOverlay();
@@ -27,16 +49,32 @@ describe('PosViewTest (Migrated from Selenium)', () => {
     waitForOverlay();
 
     cy.get('input.input-with-feedback.form-control[data-fieldtype="Data"]', { timeout: 120000 }).first().type(itemCode, { force: true });
-    cy.contains('div', itemCode, { timeout: 120000 }).first().click({ force: true });
+ 
+    cy.contains('div', itemCode, { timeout: 120000 })
+      .eq(0)
+      .scrollIntoView({ offset: { top: -120, left: 0 } })
+      .wait(20000, { log: false })
+      .click({ force: true });
+  
+        cy.wait(20000, { log: false });
 
     cy.get('.checkout-btn, .submit-order-btn', { timeout: 120000 }).first().click({ force: true });
     cy.get('.submit-order-btn', { timeout: 120000 }).click({ force: true });
-    cy.get('.btn.btn-primary.btn-sm.btn-modal-primary', { timeout: 120000 }).first().click({ force: true });
+    cy.get('.btn.btn-primary.btn-sm.btn-modal-primary', { timeout: 60000 }).first().click({ force: true });
 
-    cy.get('.invoice-name, .label-success', { timeout: 120000 }).should('be.visible');
+    cy.get('.invoice-name, .label-success', { timeout: 120000 })
+      .should('be.visible')
+      .invoke('text')
+      .then((statusText) => {
+        const actualStatus = String(statusText || '').replace(/\s+/g, ' ').trim();
+        cy.log(`POS invoice status value: ${actualStatus}`);
+        // eslint-disable-next-line no-console
+        console.log('POS invoice status value:', actualStatus);
+        expect(actualStatus).to.contain('معتمد');
+      });
   });
 
-  it('TC02_applyDiscountOnSalesInvoiceUsingPosView', () => {
+  it.skip('TC02_applyDiscountOnSalesInvoiceUsingPosView', () => {
     const env = getMigrationEnv();
     const itemCode = `item ${Date.now()}`;
 

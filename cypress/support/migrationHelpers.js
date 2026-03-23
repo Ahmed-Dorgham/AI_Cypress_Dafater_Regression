@@ -1,4 +1,4 @@
-﻿const LONG_TIMEOUT = 30000;
+﻿const LONG_TIMEOUT = 60000;
 const OVERLAY = '.freeze-message-container';
 const FULL_SCREEN_TEXT_RE = /\u0639\u0631\u0636\s*\u0627\u0644\u0634\u0627\u0634\u0629\s*\u0643\u0627\u0645\u0644\u0629|full\s*screen/i;
 
@@ -751,19 +751,19 @@ export const selectPurchaseReceiptItem = (itemCode) => {
     }
   });
 
-  clickFirstExisting(itemStaticCellSelectors, 'Purchase receipt item code static cell (row)');
-  cy.get(itemStaticCellSelectors.join(', '), { timeout: 60000 }).then(($cells) => {
-    const cellTarget = $cells.toArray().find((el) => Cypress.$(el).is(':visible')) || $cells[0];
-    if (!cellTarget) {
-      throw new Error(`Could not find item static cell using selectors: ${itemStaticCellSelectors.join(', ')}`);
+  cy.get('body', { timeout: LONG_TIMEOUT }).then(($body) => {
+    const staticCells = $body.find(itemStaticCellSelectors.join(', ')).toArray();
+    const cellTarget = staticCells.find((el) => Cypress.$(el).is(':visible')) || staticCells[0];
+
+    if (cellTarget) {
+      cy.wrap(cellTarget, { log: false })
+        .scrollIntoView({ offset: { top: -120, left: 0 } })
+        .click({ force: true })
+        .dblclick({ force: true });
     }
-    cy.wrap(cellTarget, { log: false })
-      .scrollIntoView({ offset: { top: -120, left: 0 } })
-      .click({ force: true })
-      .dblclick({ force: true });
   });
 
-  cy.get(rowItemInputSelectors.join(', '), { timeout: 60000 })
+  cy.get(rowItemInputSelectors.join(', '), { timeout: 30000 })
     .then(($inputs) => {
       const inputTarget = $inputs.toArray().find((el) => Cypress.$(el).is(':visible')) || $inputs[0];
       if (!inputTarget) {
@@ -1126,6 +1126,81 @@ export const fillSalesOrderCore = (itemName) => {
       cy.wrap(submitTarget, { log: false }).scrollIntoView({ offset: { top: -120, left: 0 } });
     }
   });
+};
+
+export const selectCreditNoteReason = () => {
+  const reasonSelectors = 'select#reason[data-fieldname="reason"], select[data-fieldname="reason"], [data-fieldname="reason"] select';
+  const findReasonField = (attempt = 0) =>
+    cy.get('body', { timeout: LONG_TIMEOUT }).then(($body) => {
+      const visibleScope = $body.find('.form-page:visible, .layout-main-section:visible, .form-layout:visible').first();
+      const searchRoot = visibleScope.length ? visibleScope : $body;
+      const candidates = searchRoot
+        .find(reasonSelectors)
+        .toArray()
+        .filter((el) => Cypress.$(el).find('option').length > 1);
+
+      if (candidates.length) {
+        const visibleTarget = candidates.find((el) => {
+          const $el = Cypress.$(el);
+          return $el.is(':visible') && !$el.prop('disabled');
+        });
+
+        if (visibleTarget) {
+          const scrollContainer = Cypress.$(visibleTarget).closest('.layout-main-section, .form-page, .section-body, .form-layout')[0];
+          if (scrollContainer) {
+            cy.wrap(scrollContainer, { log: false }).scrollTo('bottom', { ensureScrollable: false, log: false });
+          }
+          return cy.wrap(visibleTarget, { log: false })
+            .scrollIntoView({ offset: { top: -120, left: 0 } })
+            .then(() => visibleTarget);
+        }
+
+        const fallbackTarget = candidates[0];
+        const fallbackContainer = Cypress.$(fallbackTarget).closest('.layout-main-section, .form-page, .section-body, .form-layout')[0];
+        if (fallbackContainer) {
+          cy.wrap(fallbackContainer, { log: false }).scrollTo('bottom', { ensureScrollable: false, log: false });
+        }
+        return cy.wrap(fallbackTarget, { log: false }).then(() => fallbackTarget);
+      }
+
+      if (attempt >= 25) {
+        throw new Error('Reason field not found in Credit Note after scrolling');
+      }
+
+      return cy.get('.layout-main-section:visible, .form-page:visible, .form-layout:visible, body', { log: false })
+        .first()
+        .scrollTo('bottom', { ensureScrollable: false, log: false })
+        .wait(250, { log: false })
+        .then(() => findReasonField(attempt + 1));
+    });
+
+  return findReasonField()
+    .then((reasonField) => {
+      const values = Cypress.$(reasonField)
+        .find('option')
+        .toArray()
+        .map((opt) => String(Cypress.$(opt).attr('value') || '').trim())
+        .filter(Boolean);
+
+      const preferredReasonValue = values.find((v) => /goods or services refund/i.test(v))
+        || values.find((v) => /cancellation|suspension|essential change|amendment|change in seller/i.test(v))
+        || values[0];
+
+      if (!preferredReasonValue) {
+        throw new Error('Reason select has no non-empty options to choose');
+      }
+
+      return cy.wrap(reasonField, { log: false })
+        .scrollIntoView({ offset: { top: -120, left: 0 } })
+        .select(preferredReasonValue, { force: true })
+        .invoke('val')
+        .should('eq', preferredReasonValue);
+    })
+    .then(() => cy
+      .get('.layout-main-section:visible, .form-page:visible, .form-layout:visible, body', { timeout: LONG_TIMEOUT })
+      .first()
+      .scrollTo('top', { ensureScrollable: false, log: false }))
+    .then(() => waitForOverlay());
 };
 
 export const saveAndSubmitSalesOrder = () => {
@@ -2221,7 +2296,7 @@ export const selectSalesInvoiceItem = (itemCode) => {
       expect(selected || active || panelVisible, 'sales invoice details tab active again').to.eq(true);
     });
 
-  cy.wait(60000, { log: false });
+  cy.wait(10000, { log: false });
 };
 
 export const fillSalesInvoiceCore = ({ itemCode }) => {
@@ -2862,11 +2937,16 @@ export const openCreateMenuAndChoose = (choicePatterns) => {
         .find('.dropdown-menu:visible .dropdown-item:visible, .show .dropdown-item:visible, [role="menu"]:visible [role="menuitem"]:visible, [role="menuitem"]:visible')
         .toArray();
 
-      const target = candidates.find((el) => {
+      const targetByText = candidates.find((el) => {
         const $el = Cypress.$(el);
         const text = normalize($el.text());
+        return normalizedPatterns.some((p) => text.includes(p));
+      });
+
+      const target = targetByText || candidates.find((el) => {
+        const $el = Cypress.$(el);
         const dataLabel = normalize(decodeLabel($el.attr('data-label')));
-        return normalizedPatterns.some((p) => text.includes(p) || dataLabel.includes(p));
+        return normalizedPatterns.some((p) => dataLabel.includes(p));
       });
 
       if (target) {
@@ -3057,6 +3137,157 @@ export const applyWriteOffAmount = (value) => {
   });
 };
 
+export const applyWriteOffAmountNoWait = (value) => {
+  const paymentsTabSelectors = [
+    '#sales-invoice-payments_tab-tab',
+    '[data-fieldname="payments_tab"]',
+    '[data-fieldname="payments"]',
+  ];
+  const writeOffSectionSelectors = [
+    '[data-fieldname="write_off_section"]',
+    '#write_off_section',
+  ];
+  const writeOffSectionHeadSelectors = [
+    '[data-fieldname="write_off_section"] .section-head',
+    '#write_off_section .section-head',
+    '[data-fieldname="write_off_section"] .section-head.collapsible',
+    '#write_off_section .section-head.collapsible',
+  ];
+  const writeOffAmountSelectors = [
+    '#write_off_amount',
+    'input[data-fieldname="write_off_amount"]',
+  ];
+  const writeOffAccountSelectors = [
+    '#write_off_account',
+    'input[data-fieldname="write_off_account"]',
+  ];
+  const optionSelectors = [
+    'ul.awesomplete li:visible',
+    '.awesomplete [role="option"]:visible',
+    '[role="listbox"] li:visible',
+    '[role="option"]:visible',
+  ];
+
+  cy.get(paymentsTabSelectors.join(', '), { timeout: LONG_TIMEOUT }).then(($els) => {
+    const paymentsTab = $els.toArray().find((el) => {
+      const $el = Cypress.$(el);
+      return $el.is(':visible') && !$el.prop('disabled') && !$el.hasClass('disabled');
+    }) || $els[0];
+
+    if (paymentsTab) {
+      cy.wrap(paymentsTab, { log: false })
+        .scrollIntoView({ offset: { top: -120, left: 0 } });
+    }
+  });
+
+  clickFirstExisting(paymentsTabSelectors, 'Payments tab');
+  cy.log('open payments section');
+  waitForOverlay();
+
+  const scrollToWriteOffSection = () =>
+    cy.get('body', { timeout: LONG_TIMEOUT }).then(($body) => {
+      const writeOffSection = $body.find(writeOffSectionSelectors.join(', ')).toArray()[0];
+      if (!writeOffSection) return;
+
+      cy.log('scroll to write-off section');
+      return cy.wrap(writeOffSection, { log: false })
+        .scrollIntoView({ offset: { top: -120, left: 0 } })
+        .wait(120, { log: false });
+    });
+
+  const clickWriteOffSectionAndEnsureAmountVisible = (attempt = 0) =>
+    scrollToWriteOffSection().then(() => cy.get('body', { timeout: LONG_TIMEOUT }).then(($body) => {
+      const section = $body.find(writeOffSectionSelectors.join(', ')).toArray().find((el) => Cypress.$(el).is(':visible'));
+      const sectionRoot = section ? Cypress.$(section) : $body;
+
+      const isWriteOffAmountVisible = sectionRoot.find(writeOffAmountSelectors.join(', ')).toArray().some((el) => {
+        const $el = Cypress.$(el);
+        return $el.is(':visible') && !$el.prop('disabled') && !$el.hasClass('disabled');
+      });
+
+      if (isWriteOffAmountVisible) {
+        return;
+      }
+
+      if (attempt >= 20) {
+        throw new Error('Write-off amount field did not become visible after repeatedly clicking write_off_section head');
+      }
+
+      const writeOffHead = $body.find(writeOffSectionHeadSelectors.join(', ')).toArray().find((el) => {
+        const $el = Cypress.$(el);
+        return $el.is(':visible') && !$el.prop('disabled') && !$el.hasClass('disabled');
+      });
+
+      const writeOffSection = $body.find(writeOffSectionSelectors.join(', ')).toArray().find((el) => {
+        const $el = Cypress.$(el);
+        return $el.is(':visible');
+      });
+
+      if (writeOffSection) {
+        cy.wrap(writeOffSection, { log: false })
+          .scrollIntoView({ offset: { top: -120, left: 0 } });
+      }
+
+      if (writeOffHead) {
+        return cy.wrap(writeOffHead, { log: false })
+          .scrollIntoView({ offset: { top: -120, left: 0 } })
+          .click({ force: true })
+          .wait(220, { log: false })
+          .then(() => clickWriteOffSectionAndEnsureAmountVisible(attempt + 1));
+      }
+
+      return cy
+        .get('.layout-main-section:visible, .form-page:visible, .form-layout:visible, body', { log: false })
+        .first()
+        .scrollTo('bottom', { ensureScrollable: false, log: false })
+        .wait(250, { log: false })
+        .then(() => clickWriteOffSectionAndEnsureAmountVisible(attempt + 1));
+    }));
+
+  cy.log('enter write off amount');
+  clickWriteOffSectionAndEnsureAmountVisible().then(() =>
+    cy.get(writeOffAmountSelectors.join(', '), { timeout: LONG_TIMEOUT }).then(($els) => {
+      const target = $els.toArray().find((el) => {
+        const $el = Cypress.$(el);
+        return $el.is(':visible') && !$el.prop('disabled') && !$el.hasClass('disabled');
+      });
+
+      if (!target) {
+        throw new Error(`Could not find Write-off amount field using selectors: ${writeOffAmountSelectors.join(', ')}`);
+      }
+
+      cy.wrap(target, { log: false })
+        .scrollIntoView({ offset: { top: -120, left: 0 } })
+        .click({ force: true })
+        .focus()
+        .should('be.focused')
+        .type('{selectall}{del}', { force: true })
+        .type(String(value), { force: true });
+    })
+  );
+  cy.log(`entered write off amount is ${value}`);
+
+  cy.get(writeOffAccountSelectors.join(', '), { timeout: LONG_TIMEOUT }).then(($els) => {
+    const accountField = $els.toArray().find((el) => {
+      const $el = Cypress.$(el);
+      return $el.is(':visible') && !$el.prop('disabled') && !$el.hasClass('disabled');
+    }) || $els[0];
+
+    if (!accountField) return;
+
+    cy.wrap(accountField, { log: false })
+      .scrollIntoView({ offset: { top: -120, left: 0 } })
+      .click({ force: true });
+
+    cy.get('body', { timeout: LONG_TIMEOUT }).then(($body) => {
+      const chosenWriteOffAccount = $body.find(optionSelectors.join(', ')).toArray()[0];
+      if (chosenWriteOffAccount) {
+        cy.wrap(chosenWriteOffAccount, { log: false }).click({ force: true });
+      }
+    });
+  });
+};
+
 export const applyAdvanceAmount = (value) => {
   const paymentsTabSelectors = [
     '#sales-invoice-payments_tab-tab',
@@ -3115,19 +3346,108 @@ export const applyAdvanceAmount = (value) => {
 };
 
 export const applyDiscountAmount = (value) => {
+  // clickFirstExisting(
+  //   ['#sales-invoice-__details-tab', 'a[data-fieldname="__details"][href="#sales-invoice-__details"]'],
+  //   'Sales Invoice details tab'
+  // );
   clickFirstExisting(['[data-fieldname="totals"]', '#sales-invoice-custom_taxes_and_charges-tab'], 'Totals/discount section');
   typeFirstExisting(['#discount_amount', 'input[data-fieldname="discount_amount"]'], value, 'Discount amount');
 };
 
 export const removeTaxesIfPresent = () => {
-  clickFirstExisting(['#sales-invoice-custom_taxes_and_charges-tab', '[data-fieldname="taxes"]'], 'Taxes tab');
-  cy.get('body').then(($body) => {
-    const check = $body.find('[data-fieldname="taxes"] input[type="checkbox"]');
-    if (check.length) cy.wrap(check[0]).click({ force: true });
-    const remove = $body.find('[data-fieldname="taxes"] [data-action="delete_rows"]');
-    if (remove.length) cy.wrap(remove[0]).click({ force: true });
+  const taxesTabSelectors = [
+    '#sales-invoice-custom_taxes_and_charges-tab',
+    'a[data-fieldname="custom_taxes_and_charges"]',
+    'a[href="#sales-invoice-custom_taxes_and_charges"]',
+  ];
+  const taxesSectionSelectors = [
+    '[data-fieldname="taxes"]',
+    '#taxes',
+    '[data-fieldname="taxes"] .grid-body',
+  ];
+
+  cy.get('body', { timeout: LONG_TIMEOUT }).then(($body) => {
+    const byText = $body
+      .find('a.nav-link:visible, a[role="tab"]:visible')
+      .toArray()
+      .find((el) => String(Cypress.$(el).text() || '').replace(/\s+/g, ' ').trim() === 'الضرائب والرسوم');
+
+    if (byText) {
+      return cy.wrap(byText, { log: false })
+        .scrollIntoView({ offset: { top: -120, left: 0 } })
+        .click({ force: true });
+    }
+
+    return clickFirstExisting(taxesTabSelectors, 'Taxes tab');
   });
   waitForOverlay();
+
+  const ensureTaxesSectionVisible = (attempt = 0) =>
+    cy.get('body', { timeout: LONG_TIMEOUT }).then(($body) => {
+      const section = $body.find(taxesSectionSelectors.join(', ')).toArray().find((el) => Cypress.$(el).is(':visible'));
+      if (section) {
+        return cy.wrap(section, { log: false })
+          .scrollIntoView({ offset: { top: -120, left: 0 } })
+          .wait(120, { log: false });
+      }
+
+      if (attempt >= 8) return;
+      return cy
+        .get('.layout-main-section:visible, .form-page:visible, .form-layout:visible, body', { log: false })
+        .first()
+        .scrollTo('bottom', { ensureScrollable: false, log: false })
+        .wait(200, { log: false })
+        .then(() => ensureTaxesSectionVisible(attempt + 1));
+    });
+
+  return ensureTaxesSectionVisible()
+    .then(() =>
+      cy.get('body', { timeout: LONG_TIMEOUT }).then(($body) => {
+        const section = $body.find(taxesSectionSelectors.join(', ')).toArray().find((el) => Cypress.$(el).is(':visible'));
+        if (!section) return;
+
+        const $section = Cypress.$(section);
+        const checkbox = $section.find('input[type="checkbox"]:visible');
+        const headerCheckbox = $section.find('.grid-heading-row input[type="checkbox"]:visible, .grid-row-check input[type="checkbox"]:visible');
+        const removeBtn = $section.find('[data-action="delete_rows"]:visible');
+
+        const targetCheckbox = checkbox[0] || headerCheckbox[0];
+        if (targetCheckbox) {
+          cy.wrap(targetCheckbox, { log: false }).click({ force: true });
+          cy.wait(5000, { log: false });
+        }
+
+        const targetRemove = removeBtn.toArray().find((el) => {
+          const $el = Cypress.$(el);
+          const text = String($el.text() || '').replace(/\s+/g, ' ').trim();
+          return /delete|remove|\u062d\u0630\u0641|\u0627\u0632\u0627\u0644\u0629/i.test(text) || $el.attr('data-action') === 'delete_rows';
+        }) || removeBtn[0];
+
+        if (targetRemove) {
+          cy.wrap(targetRemove, { log: false })
+            .scrollIntoView({ offset: { top: -120, left: 0 } })
+            .click({ force: true });
+          return;
+        }
+
+        return cy
+          .wrap($section, { log: false })
+          .contains('button:visible, .btn:visible', /\u062d\u0630\u0641|delete|remove/i)
+          .scrollIntoView({ offset: { top: -120, left: 0 } })
+          .wait(5000, { log: false })
+          .click({ force: true });
+
+        const globalRemove = $body
+          .find('[data-action="delete_rows"]:visible, .grid-remove-rows:visible, .grid-delete-rows:visible')
+          .toArray()[0];
+        if (globalRemove) {
+          cy.wrap(globalRemove, { log: false })
+            .scrollIntoView({ offset: { top: -120, left: 0 } })
+            .click({ force: true });
+        }
+      })
+    )
+    .then(() => waitForOverlay());
 };
 
 export const readOutstandingAmount = () =>

@@ -15,6 +15,17 @@ module.exports = defineConfig({
       scope,
     },
     setupNodeEvents(on, config) {
+      on('before:browser:launch', (browser = {}, launchOptions) => {
+        if (browser.family === 'firefox') {
+          launchOptions.args.push('-safe-mode');
+          launchOptions.preferences['layers.acceleration.disabled'] = true;
+          launchOptions.preferences['gfx.webrender.enabled'] = false;
+          launchOptions.preferences['gfx.webrender.all'] = false;
+          launchOptions.preferences['gfx.webrender.force-disabled'] = true;
+          launchOptions.preferences['media.hardware-video-decoding.enabled'] = false;
+        }
+        return launchOptions;
+      });
       return config;
     },
   },
@@ -27,7 +38,7 @@ module.exports = defineConfig({
             displayName: 'Firefox 110',
             version: '110.0',
             majorVersion: 110,
-            path: 'C:\\Firefox110\\firefox.exe',
+            path: 'C:\Program Files\Mozilla Firefox\firefox.exe',
           },
         ],
       }

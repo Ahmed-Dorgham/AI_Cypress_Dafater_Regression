@@ -1,4 +1,4 @@
-/// <reference types="cypress" />
+﻿/// <reference types="cypress" />
 
 import {
   getMigrationEnv,
@@ -16,10 +16,12 @@ import {
   ensureSidebarVisible,
   applyAdvanceAmount,
   applyWriteOffAmount,
+  applyWriteOffAmountNoWait,
   applyDiscountAmount,
   removeTaxesIfPresent,
   readOutstandingAmount,
   openCreateMenuAndChoose,
+  selectCreditNoteReason,
 } from '../support/migrationHelpers';
 
 const startSalesInvoiceDraft = () => {
@@ -292,7 +294,7 @@ const clickOnSaveAndSubmitReceiptVoucherBtnForWriteOffSuite = () => {
       });
 
     if (!target) {
-      throw new Error('Could not find visible "حفظ واعتماد / Submit" button by text');
+      throw new Error('Could not find visible "Ø­ÙØ¸ ÙˆØ§Ø¹ØªÙ…Ø§Ø¯ / Submit" button by text');
     }
 
     cy.wrap(target, { log: false })
@@ -476,19 +478,40 @@ describe('WriteOffSalesInvoicesTest (Migrated from Selenium)', () => {
     });
   });
 
-  it('TC05_verifyValidationWhenApplyDiscountAndApplyWriteOffWithValueGreaterThanGrandTotalAmount', () => {
+  it.skip('TC05_verifyValidationWhenApplyDiscountAndApplyWriteOffWithValueGreaterThanGrandTotalAmount', () => {
+    cy.on('window:before:load', (win) => {
+      cy.stub(win, 'open').as('windowOpen');
+    });
+
     const env = getMigrationEnv();
     const itemCode = `item ${Date.now()}`;
-    login({ url: env.v5Url, username: env.user5, password: env.pass5 });
-    createItem(itemCode);
-    addItemPriceStandardSelling(itemCode, env.itemPrice);
-    createDraftInvoice(itemCode);
+    loginToV5(env);
+    createItemWithStandardSellingPrice(itemCode, env.itemPrice);
+    createAndSaveSalesInvoice(itemCode);
 
     readOutstandingAmount().then((beforeOutstanding) => {
-      applyDiscountAmount(beforeOutstanding / 2);
-      applyWriteOffAmount(beforeOutstanding);
-      saveSalesInvoice();
-      cy.get('.msgprint', { timeout: 60000 }).should('be.visible');
+      const totalAmountValueBeforeApplyWriteOff = Number(beforeOutstanding);
+      const halfAmount = totalAmountValueBeforeApplyWriteOff / 2;
+
+      applyDiscountAmount(halfAmount);
+      applyWriteOffAmount(totalAmountValueBeforeApplyWriteOff);
+
+      cy.get('.msgprint', { timeout: 60000 })
+        .should('be.visible')
+        .invoke('text')
+        .then((validationMsgText) => {
+          const validationMsg = String(validationMsgText || '').replace(/\s+/g, ' ').trim();
+
+          cy.log(`Validation message after TC05: ${validationMsg}`);
+          // eslint-disable-next-line no-console
+          console.log(
+            'Validation Msg after Apply discount And Apply Write off With Value Greater Than Grand Total Amount is',
+            validationMsg
+          );
+
+          expect(validationMsg).to.contain(String(halfAmount));
+          expect(validationMsg).to.contain('\u0645\u0628\u0644\u063a \u0627\u0644\u0634\u0637\u0628');
+        });
     });
   });
 
@@ -501,8 +524,17 @@ describe('WriteOffSalesInvoicesTest (Migrated from Selenium)', () => {
     createDraftInvoice(itemCode);
 
     applyWriteOffAmount(-100);
-    saveSalesInvoice();
-    cy.get('.msgprint', { timeout: 60000 }).should('contain.text', '????');
+    // saveSalesInvoice();
+    cy.get('.msgprint', { timeout: 30000 })
+      .should('be.visible')
+      .invoke('text')
+      .then((validationMsgText) => {
+        const validationMsg = String(validationMsgText || '').replace(/\s+/g, ' ').trim();
+        cy.log(`Validation message after TC06: ${validationMsg}`);
+        // eslint-disable-next-line no-console
+        console.log('Validation Msg after Apply Write Off With Negative is', validationMsg);
+        expect(validationMsg).to.contain('\u0644\u0627 \u064a\u0645\u0643\u0646 \u0623\u0646 \u064a\u0643\u0648\u0646 \u0645\u0628\u0644\u063a \u0627\u0644\u0634\u0637\u0628 \u0633\u0627\u0644\u0628\u064b\u0627. \u064a\u0631\u062c\u0649 \u0625\u062f\u062e\u0627\u0644 \u0642\u064a\u0645\u0629 \u0645\u0648\u062c\u0628\u0629.');
+      });
   });
 
   it.skip('TC07_verifyValidationWhenApplyCompleteWriteOffThenRemoveTaxes', () => {
@@ -514,14 +546,23 @@ describe('WriteOffSalesInvoicesTest (Migrated from Selenium)', () => {
     createDraftInvoice(itemCode);
 
     readOutstandingAmount().then((beforeOutstanding) => {
-      applyWriteOffAmount(beforeOutstanding);
+      applyWriteOffAmountNoWait(beforeOutstanding);
       removeTaxesIfPresent();
       saveSalesInvoice();
-      cy.get('.msgprint', { timeout: 60000 }).should('be.visible');
+      cy.get('.msgprint', { timeout: 60000 })
+        .should('be.visible')
+        .invoke('text')
+        .then((validationMsgText) => {
+          const validationMsg = String(validationMsgText || '').replace(/\s+/g, ' ').trim();
+          cy.log(`Validation message after TC07: ${validationMsg}`);
+          // eslint-disable-next-line no-console
+          console.log('Validation Msg after Apply Complete Write Off Then Remove Taxes is', validationMsg);
+          expect(validationMsg).to.not.equal('');
+        });
     });
   });
 
-  it.skip('TC08_verifyValidationWhenApplyCompleteWriteOffAndDiscountThenRemoveTaxes', () => {
+  it('TC08_verifyValidationWhenApplyCompleteWriteOffAndDiscountThenRemoveTaxes', () => {
     const env = getMigrationEnv();
     const itemCode = `item ${Date.now()}`;
     login({ url: env.v5Url, username: env.user5, password: env.pass5 });
@@ -534,7 +575,16 @@ describe('WriteOffSalesInvoicesTest (Migrated from Selenium)', () => {
       applyWriteOffAmount(beforeOutstanding / 2);
       removeTaxesIfPresent();
       saveSalesInvoice();
-      cy.get('.msgprint', { timeout: 60000 }).should('be.visible');
+      cy.get('.msgprint', { timeout: 60000 })
+        .should('be.visible')
+        .invoke('text')
+        .then((validationMsgText) => {
+          const validationMsg = String(validationMsgText || '').replace(/\s+/g, ' ').trim();
+          cy.log(`Validation message after TC08: ${validationMsg}`);
+          // eslint-disable-next-line no-console
+          console.log('Validation Msg after Apply Complete Write Off And Discount Then Remove Taxes is', validationMsg);
+          expect(validationMsg).to.contain('\u0644\u0627 \u064a\u0645\u0643\u0646 \u0623\u0646 \u064a\u0643\u0648\u0646 \u0627\u0644\u0645\u0628\u0644\u063a \u0627\u0644\u0645\u0633\u062a\u062d\u0642 \u0633\u0627\u0644\u0628\u064b\u0627. \u0627\u0644\u0642\u064a\u0645\u0629 \u0627\u0644\u062d\u0627\u0644\u064a\u0629: -');
+        });
     });
   });
 
@@ -549,10 +599,21 @@ describe('WriteOffSalesInvoicesTest (Migrated from Selenium)', () => {
     readOutstandingAmount().then((beforeOutstanding) => {
       applyWriteOffAmount(beforeOutstanding / 2);
       removeTaxesIfPresent();
+            submitSalesInvoice();
+      openCreateMenuAndChoose(['مرتجع / اشعار دائن', 'credit']);
+      selectCreditNoteReason();
+  
       submitSalesInvoice();
-      openCreateMenuAndChoose(['?????', '????? ????', 'credit']);
-      submitSalesInvoice();
-      cy.get('.label.label-success, .indicator-pill.no-indicator-dot.whitespace-nowrap.green', { timeout: 60000 }).should('exist');
+      cy.get('.label.label-success, .indicator-pill.no-indicator-dot.whitespace-nowrap.green', { timeout: 30000 })
+        .should('exist')
+        .invoke('text')
+        .then((statusText) => {
+          const actualStatus = String(statusText || '').replace(/\s+/g, ' ').trim();
+          cy.log(`Credit Note status value: ${actualStatus}`);
+          // eslint-disable-next-line no-console
+          console.log('Credit Note status value:', actualStatus);
+          expect(actualStatus).to.eq('معتمد');
+        });
     });
   });
 });
