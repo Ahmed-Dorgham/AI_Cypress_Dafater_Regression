@@ -1,52 +1,27 @@
 const { defineConfig } = require('cypress');
 
-const scope = process.env.DAFATER_SCOPE || 'Regression';
-// Force HTTPS, fallback to default URL
-const baseUrl = (process.env.DAFATER_BASE_URL || 'http://temp-qc-tmp.dafater.biz').replace(/^http:/, 'https:');
-const forceFirefox110 = process.env.DAFATER_FORCE_FIREFOX_110 === '1';
-
 module.exports = defineConfig({
   e2e: {
-    baseUrl, // always HTTPS
+    baseUrl: process.env.DAFATER_BASE_URL || 'https://temp-qc-tmp.dafater.biz',
     defaultCommandTimeout: 40000,
     pageLoadTimeout: 120000,
     video: false,
     supportFile: 'cypress/support/e2e.js',
     env: {
-      scope,
+      scope: process.env.DAFATER_SCOPE || 'Regression',
     },
     setupNodeEvents(on, config) {
-      on('before:browser:launch', (browser = {}, launchOptions) => {
-        if (browser.family === 'firefox') {
-          launchOptions.args.push('-safe-mode');
-          launchOptions.preferences['layers.acceleration.disabled'] = true;
-          launchOptions.preferences['gfx.webrender.enabled'] = false;
-          launchOptions.preferences['gfx.webrender.all'] = false;
-          launchOptions.preferences['gfx.webrender.force-disabled'] = true;
-          launchOptions.preferences['media.hardware-video-decoding.enabled'] = false;
-        }
-        return launchOptions;
-      });
-
-      // Ensure the baseUrl in Cypress config is HTTPS
-      config.baseUrl = baseUrl;
-
+      // No special Firefox hacks needed for headed Chrome
       return config;
     },
   },
-
-  ...(forceFirefox110
-    ? {
-        browsers: [
-          {
-            name: 'firefox110',
-            family: 'firefox',
-            displayName: 'Firefox 110',
-            version: '110.0',
-            majorVersion: 110,
-            path: 'C:\\Program Files\\Mozilla Firefox\\firefox.exe',
-          },
-        ],
-      }
-    : {}),
+  browsers: [
+    {
+      name: 'chrome',
+      family: 'chromium',
+      displayName: 'Chrome Headed',
+      channel: 'stable',
+      path: 'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',
+    },
+  ],
 });
