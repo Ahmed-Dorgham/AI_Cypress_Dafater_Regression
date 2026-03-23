@@ -17,8 +17,8 @@ const rawBase =
   Cypress.config('baseUrl') ||
   Cypress.env('DAFATER_BASE_URL') ||
   (Cypress.env('scope') === 'Regression'
-    ? 'http://temp-qc-tmp.dafater.biz'
-    : 'http://temp-qc-tmp.dafater.biz');
+    ? 'https://temp-qc-tmp.dafater.biz'
+    : 'https://temp-qc-tmp.dafater.biz');
 
 const origin = (() => {
   try {
