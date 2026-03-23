@@ -50,19 +50,18 @@ describe('PosViewTest (Migrated from Selenium)', () => {
 
     cy.get('input.input-with-feedback.form-control[data-fieldtype="Data"]', { timeout: 120000 }).first().type(itemCode, { force: true });
  
-    cy.contains('div', itemCode, { timeout: 120000 })
+cy.contains('div.item-name', itemCode, { timeout: 120000 })
       .eq(0)
       .scrollIntoView({ offset: { top: -120, left: 0 } })
       .wait(20000, { log: false })
       .click({ force: true });
-  
         cy.wait(20000, { log: false });
 
     cy.get('.checkout-btn, .submit-order-btn', { timeout: 120000 }).first().click({ force: true });
     cy.get('.submit-order-btn', { timeout: 120000 }).click({ force: true });
     cy.get('.btn.btn-primary.btn-sm.btn-modal-primary', { timeout: 60000 }).first().click({ force: true });
 
-    cy.get('.invoice-name, .label-success', { timeout: 120000 })
+    cy.get('.indicator-pill.whitespace-nowrap.green', { timeout: 120000 })
       .should('be.visible')
       .invoke('text')
       .then((statusText) => {
@@ -70,7 +69,8 @@ describe('PosViewTest (Migrated from Selenium)', () => {
         cy.log(`POS invoice status value: ${actualStatus}`);
         // eslint-disable-next-line no-console
         console.log('POS invoice status value:', actualStatus);
-        expect(actualStatus).to.contain('معتمد');
+        expect(actualStatus).to.contain('Paid'); 
+
       });
   });
 
