@@ -13,6 +13,35 @@ import {
   selectPurchaseReceiptItem,
   saveAndSubmitPurchaseReceipt,
 } from '../support/migrationHelpers';
+const rawBase =
+  Cypress.config('baseUrl') ||
+  Cypress.env('DAFATER_BASE_URL') ||
+  (Cypress.env('scope') === 'Regression'
+    ? 'https://temp-qc-tmp.dafater.biz'
+    : 'https://temp-qc-tmp.dafater.biz');
+
+const origin = (() => {
+  try {
+    return new URL(rawBase).origin;
+  } catch (e) {
+    return rawBase.split('#')[0].replace(/\/$/, '').split('/app')[0];
+  }
+})();
+
+const baseUrl = origin;
+
+const scope = Cypress.env('scope') || 'Regression'; // Mirrors TestNG Scope param
+const creds = {
+  username: Cypress.env('DAFATER_USER') || 'Administrator',
+  password:
+    Cypress.env('DAFATER_PASS') ||
+    (scope === 'Regression' ? 'AsDedpoEweWwerd' : 'AsDedpoEweWwerd'),
+};
+
+const ITEM_PRICE = Cypress.env('DAFATER_ITEM_PRICE') || '100';
+const OVERLAY = '.freeze-message-container';
+const LONG_TIMEOUT = 200000;
+
 
 describe('PosViewTest (Migrated from Selenium)', () => {
   it('TC01_createNewSalesInvoiceUsingPosView', () => {
