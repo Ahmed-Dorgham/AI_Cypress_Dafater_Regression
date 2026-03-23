@@ -19,6 +19,13 @@ pipeline {
             }
         }
 
+        stage('Install Cypress Binary') {
+            steps {
+                echo "Installing Cypress binary..."
+                bat 'npx cypress install'
+            }
+        }
+
         stage('Diagnostics') {
             steps {
                 bat 'whoami'
@@ -29,13 +36,13 @@ pipeline {
 
         stage('Run Cypress Tests') {
             steps {
-                echo "Running Cypress tests on Chrome (headed, specific spec)..."
-bat '''
-set TERM=dumb
-set NO_COLOR=1
-set FORCE_COLOR=0
-npx cypress run --quiet --browser chrome --headed --spec "cypress/e2e/addingItems.cy.js" --reporter dot 
-'''
+                echo "Running Cypress tests on Chrome..."
+                bat '''
+                set TERM=dumb
+                set NO_COLOR=1
+                set FORCE_COLOR=0
+                npx cypress run --quiet --browser chrome --headed --spec "cypress/e2e/addingItems.cy.js" --reporter dot
+                '''
             }
         }
     }
