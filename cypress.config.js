@@ -2,7 +2,7 @@ const { defineConfig } = require('cypress');
 
 const scope = process.env.DAFATER_SCOPE || 'Regression';
 // Force HTTPS, fallback to default URL
-const baseUrl = (process.env.DAFATER_BASE_URL || 'https://temp-qc-tmp.dafater.biz').replace(/^http:/, 'https:');
+const baseUrl = (process.env.DAFATER_BASE_URL || 'http://temp-qc-tmp.dafater.biz').replace(/^http:/, 'https:');
 const forceFirefox110 = process.env.DAFATER_FORCE_FIREFOX_110 === '1';
 
 module.exports = defineConfig({
