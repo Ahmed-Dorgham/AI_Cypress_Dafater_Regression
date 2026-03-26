@@ -1,6 +1,42 @@
 // Ensure xpath commands are registered for all specs.
 import 'cypress-xpath';
 
+export const getUiConfig = () => {
+  const scope = Cypress.env('scope') || 'Regression';
+  const rawBase =
+    Cypress.env('DAFATER_BASE_URL') ||
+    Cypress.env('DAFATER_V5_URL') ||
+    Cypress.config('baseUrl') ||
+    'https://dafater-qc-1.dafater.biz';
+
+  let origin = String(rawBase);
+  try {
+    origin = new URL(String(rawBase)).origin;
+  } catch (e) {
+    origin = String(rawBase).split('#')[0].replace(/\/$/, '').split('/app')[0];
+  }
+
+  return {
+    scope,
+    rawBase,
+    baseUrl: origin,
+    creds: {
+      username: Cypress.env('DAFATER_USER') || Cypress.env('DAFATER_USER_5') || 'Administrator',
+      password: Cypress.env('DAFATER_PASS') || Cypress.env('DAFATER_PASS_5') || '012345MM@@',
+    },
+  };
+};
+
+export const getMigrationEnv = () => ({
+  v4Url: Cypress.env('DAFATER_V4_URL') || 'https://almorished-v4.dafater.biz/index.html',
+  v5Url: Cypress.env('DAFATER_V5_URL') || 'http://temp-qc-tmp.dafater.biz/#login',
+  user4: Cypress.env('DAFATER_USER_4') || 'Administrator',
+  pass4: Cypress.env('DAFATER_PASS_4') || 'cAAscAAxhv7N',
+  user5: Cypress.env('DAFATER_USER_5') || 'Administrator',
+  pass5: Cypress.env('DAFATER_PASS_5') || '012345MM@@',
+// AsDedpoEweWwerd
+  itemPrice: Cypress.env('DAFATER_ITEM_PRICE') || '100',
+});
 // Ignore specific app error to keep test run green when setAttribute issue surfaces.
 Cypress.on('window:before:load', (win) => {
   // Suppress app-level onerror to avoid slider script crashes from blocking tests.
@@ -87,3 +123,92 @@ Cypress.on('uncaught:exception', (err) => {
   // Fallback: don't fail the test run on any app-side exception.
   return false;
 });
+
+const clearBrowserState = () => {
+  cy.clearCookies({ log: false });
+  cy.clearLocalStorage({ log: false });
+
+  cy.window({ log: false }).then((win) => {
+    try {
+      win.localStorage.clear();
+      win.sessionStorage.clear();
+    } catch (e) {
+      // ignore storage clearing failures
+    }
+
+    if (win.indexedDB && typeof win.indexedDB.databases === 'function') {
+      return win.indexedDB.databases().then((dbs) =>
+        Cypress.Promise.all(
+          (dbs || []).map((db) =>
+            new Cypress.Promise((resolve) => {
+              if (!db || !db.name) return resolve();
+              const req = win.indexedDB.deleteDatabase(db.name);
+              req.onsuccess = () => resolve();
+              req.onerror = () => resolve();
+              req.onblocked = () => resolve();
+            })
+          )
+        )
+      ).then(() => {
+        if (!win.caches || typeof win.caches.keys !== 'function') return;
+        return win.caches.keys().then((keys) => Cypress.Promise.all(keys.map((key) => win.caches.delete(key))));
+      });
+    }
+
+    if (win.caches && typeof win.caches.keys === 'function') {
+      return win.caches.keys().then((keys) => Cypress.Promise.all(keys.map((key) => win.caches.delete(key))));
+    }
+  });
+};
+beforeEach(() => {
+  const resolvedConfig = getUiConfig();
+  const migrationEnv = getMigrationEnv();
+  const rawBaseUrl =
+    Cypress.env('DAFATER_BASE_URL') ||
+    Cypress.env('DAFATER_V5_URL') ||
+    resolvedConfig.rawBase;
+
+  let baseUrl = String(rawBaseUrl);
+  try {
+    baseUrl = new URL(String(rawBaseUrl)).origin;
+  } catch (e) {
+    baseUrl = String(rawBaseUrl).split('#')[0].replace(/\/$/, '').split('/app')[0];
+  }
+
+  const uiConfig = {
+    ...resolvedConfig,
+    rawBase: rawBaseUrl,
+    baseUrl,
+  };
+  const { scope, creds } = uiConfig;
+
+  Cypress.env('uiConfig', uiConfig);
+  Cypress.env('migrationEnv', migrationEnv);
+  Cypress.env('baseUrl', baseUrl);
+  Cypress.env('scope', scope);
+  Cypress.env('creds', creds);
+
+  cy.log('clear browser state');
+  clearBrowserState();
+
+  cy.log('open login');
+  cy.visit(`${baseUrl}/#login`, {
+    onBeforeLoad(win) {
+      try {
+        win.localStorage.clear();
+        win.sessionStorage.clear();
+      } catch (e) {
+        // ignore storage clearing failures
+      }
+    },
+  });
+});
+
+
+
+
+
+
+
+
+

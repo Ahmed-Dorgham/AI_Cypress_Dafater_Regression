@@ -1,4 +1,4 @@
-﻿const LONG_TIMEOUT = 60000;
+const LONG_TIMEOUT = 60000;
 const OVERLAY = '.freeze-message-container';
 const FULL_SCREEN_TEXT_RE = /\u0639\u0631\u0636\s*\u0627\u0644\u0634\u0627\u0634\u0629\s*\u0643\u0627\u0645\u0644\u0629|full\s*screen/i;
 
@@ -99,15 +99,8 @@ const pickFirstDynamicOption = (selectors, value, label) => {
   });
 };
 
-export const getMigrationEnv = () => ({
-  v4Url: Cypress.env('DAFATER_V4_URL') || 'https://almorished-v4.dafater.biz/index.html',
-  v5Url: Cypress.env('DAFATER_V5_URL') || 'http://temp-qc-tmp.dafater.biz/#login',
-  user4: Cypress.env('DAFATER_USER_4') || 'Administrator',
-  pass4: Cypress.env('DAFATER_PASS_4') || 'cAAscAAxhv7N',
-  user5: Cypress.env('DAFATER_USER_5') || 'Administrator',
-  pass5: Cypress.env('DAFATER_PASS_5') || 'AsDedpoEweWwerd',
-  itemPrice: Cypress.env('DAFATER_ITEM_PRICE') || '100',
-});
+export const getUiConfig = () => Cypress.env('uiConfig');
+export const getMigrationEnv = () => Cypress.env('migrationEnv');
 
 export const waitForOverlay = () => {
   return cy.get('body', { timeout: LONG_TIMEOUT }).then(($body) => {
@@ -157,7 +150,7 @@ export const ensureSidebarVisible = () => {
   });
 };
 
-export const clickNewPrimaryAction = () => {
+export const clickNewPrimaryAction = (buttonText) => {
   waitForOverlay();
   cy.get('body', { timeout: LONG_TIMEOUT }).then(($body) => {
     const candidateSelector = '.toolbar .btn, .btn.toolbar-btn, .primary-action.toolbar-btn, [id^="appframe-btn-"], [data-action-name], [data-action_name], .dropdown-item, [role="menuitem"], button, a';
@@ -200,7 +193,30 @@ export const clickNewPrimaryAction = () => {
       '\u062d\u0641\u0638',
       '\u0627\u0639\u062a\u0645\u0627\u062f',
     ];
+    const preferredButtonText = normalize(buttonText || '');
 
+    const clickExactButtonText = (attempt = 0) =>
+      cy.get('body', { timeout: LONG_TIMEOUT }).then(($ctx) => {
+        if (!preferredButtonText) return false;
+
+        const byText = $ctx
+          .find(candidateSelector)
+          .toArray()
+          .find((el) => {
+            const $el = Cypress.$(el);
+            if (!$el.is(':visible') || $el.prop('disabled') || $el.hasClass('disabled')) return false;
+            const text = normalize($el.text());
+            const dataLabel = normalize(decodeLabel($el.attr('data-label')));
+            return text === preferredButtonText || dataLabel === preferredButtonText;
+          });
+
+        if (byText) {
+          return clickAndHandle(byText).then(() => true);
+        }
+
+        if (attempt >= 6) return false;
+        return cy.wait(300, { log: false }).then(() => clickExactButtonText(attempt + 1));
+      });
     const clickPreferredDocByText = (attempt = 0) =>
       cy.get('body', { timeout: LONG_TIMEOUT }).then(($ctx) => {
         const byText = $ctx
@@ -223,14 +239,35 @@ export const clickNewPrimaryAction = () => {
       });
 
     const clickAndHandle = ($target) => {
-      return cy.wrap($target, { log: false }).scrollIntoView().click({ force: true }).then(() => {
-        // Some pages render "Full Screen" a moment after clicking Create/New.
-        return clickFullScreenIfPresent();
+      return cy.get('body', { timeout: LONG_TIMEOUT }).then(($body) => {
+        const targetText = normalize(Cypress.$($target).text());
+        const targetId = normalize(Cypress.$($target).attr('id'));
+        const targetAction = normalize(Cypress.$($target).attr('data-action-name') || Cypress.$($target).attr('data-action_name'));
+
+        const freshTarget = $body
+          .find(candidateSelector)
+          .toArray()
+          .find((el) => {
+            const $el = Cypress.$(el);
+            if (!$el.is(':visible') || $el.prop('disabled') || $el.hasClass('disabled')) return false;
+
+            return normalize($el.text()) === targetText
+              && normalize($el.attr('id')) === targetId
+              && normalize($el.attr('data-action-name') || $el.attr('data-action_name')) === targetAction;
+          }) || $target;
+
+        return cy.wrap(freshTarget, { log: false }).scrollIntoView().click({ force: true }).then(() => {
+          // Some pages render "Full Screen" a moment after clicking Create/New.
+          return clickFullScreenIfPresent();
+        });
       });
     };
 
-    return clickPreferredDocByText().then((preferredClicked) => {
-      if (preferredClicked) return;
+    return clickExactButtonText().then((exactTextClicked) => {
+      if (exactTextClicked) return;
+
+      return clickPreferredDocByText().then((preferredClicked) => {
+        if (preferredClicked) return;
 
       const target = candidates.find((el) => {
         const $el = Cypress.$(el);
@@ -256,6 +293,7 @@ export const clickNewPrimaryAction = () => {
         )
         .first()
         .then(($el) => clickAndHandle($el));
+      });
     });
   });
 };
@@ -339,7 +377,7 @@ const closeUnexpectedWindowIfPresent = (attempt = 0) =>
       .toArray()
       .find((el) => {
         const txt = String(Cypress.$(el).text() || '').replace(/\s+/g, ' ').trim().toLowerCase();
-        return /اغلاق|إغلاق|close|cancel|ok|موافق|لا|no/i.test(txt);
+        return /\u0627\u063a\u0644\u0627\u0642|\u0625\u063a\u0644\u0627\u0642|close|cancel|ok|\u062d\u0633\u0646\u0627\u064b|\u0644\u0627|no/i.test(txt);
       });
 
     if (actionTarget) {
@@ -944,10 +982,10 @@ export const enterValidDataIntoReceiptVoucherPage = (amount = 100) => {
         .type(String(value), { force: true });
     });
 
-  selectIfVisible(['#payment_type', 'select[data-fieldname="payment_type"]'], /receive|receipt|استلام|قبض|تحصيل/i);
-  selectIfVisible(['#party_type', 'select[data-fieldname="party_type"]'], /customer|عميل/i);
+  selectIfVisible(['#payment_type', 'select[data-fieldname="payment_type"]'], /receive|receipt|\u0627\u0633\u062a\u0644\u0627\u0645|\u0642\u0628\u0636|\u062a\u062d\u0635\u064a\u0644/i);
+  selectIfVisible(['#party_type', 'select[data-fieldname="party_type"]'], /customer|\u0639\u0645\u064a\u0644/i);
   pickFirstLinkOption(['#party', 'input[data-fieldname="party"]']);
-  selectIfVisible(['#mode_of_payment', 'select[data-fieldname="mode_of_payment"]'], /cash|bank|نقد|تحويل|بنك/i);
+  selectIfVisible(['#mode_of_payment', 'select[data-fieldname="mode_of_payment"]'], /cash|bank|\u0646\u0642\u062f\u064a|\u0628\u0646\u0643\u064a|\u0628\u0646\u0643/i);
   typeAmountIfVisible(['#paid_amount', 'input[data-fieldname="paid_amount"]'], amountValue);
   typeAmountIfVisible(['#received_amount', 'input[data-fieldname="received_amount"]'], amountValue);
 };
@@ -1658,7 +1696,7 @@ export const openSpecificCompany = (companyName = '') => {
 
 export const getDefaultCreditAccount = () => {
   waitForOverlay();
-  return openCompanyTabByText(/accounts|الحسابات/i, 'Accounts')
+  return openCompanyTabByText(/accounts|\u0627\u0644\u062d\u0633\u0627\u0628\u0627\u062a/i, 'Accounts')
     .then(() =>
       readCompanySettingValue({
         fieldSelectors: [
@@ -1677,7 +1715,7 @@ export const getDefaultCreditAccount = () => {
 
 export const getDefaultExpenseAccount = () => {
   waitForOverlay();
-  return openCompanyTabByText(/accounts|الحسابات/i, 'Accounts')
+  return openCompanyTabByText(/accounts|\u0627\u0644\u062d\u0633\u0627\u0628\u0627\u062a/i, 'Accounts')
     .then(() =>
       readCompanySettingValue({
         fieldSelectors: [
@@ -1688,7 +1726,7 @@ export const getDefaultExpenseAccount = () => {
           '[data-fieldname="expense_account"] .like-disabled-input:visible',
           'input[data-fieldname="expense_account"]:visible',
         ],
-        labelRegex: /default\s*expense\s*account|expense\s*account|مصروف/i,
+        labelRegex: /default\s*expense\s*account|expense\s*account|\u062d\u0633\u0627\u0628\s*\u0627\u0644\u0645\u0635\u0631\u0648\u0641/i,
         debugName: 'Default expense account',
       })
     );
@@ -1696,7 +1734,7 @@ export const getDefaultExpenseAccount = () => {
 
 export const getDefaultStockNotBilledAccount = () => {
   waitForOverlay();
-  return openCompanyTabByText(/stock|المخزون/i, 'Stock')
+  return openCompanyTabByText(/stock|\u0627\u0644\u0645\u062e\u0632\u0648\u0646/i, 'Stock')
     .then(() =>
       readCompanySettingValue({
         fieldSelectors: [
@@ -1707,7 +1745,7 @@ export const getDefaultStockNotBilledAccount = () => {
           '[data-fieldname="default_stock_not_billed_account"] .like-disabled-input:visible',
           'input[data-fieldname="default_stock_not_billed_account"]:visible',
         ],
-        labelRegex: /stock\s*received\s*but\s*not\s*billed|stock\s*not\s*billed|not\s*billed|غير\s*مفو/i,
+        labelRegex: /stock\s*received\s*but\s*not\s*billed|stock\s*not\s*billed|not\s*billed|\u063a\u064a\u0631\s*\u0645\u0641\u0648\u062a\u0631/i,
         debugName: 'Default stock not billed account',
       })
     );
@@ -1885,7 +1923,7 @@ export const openItemPricePage = () => {
 
       if (!target) {
         if (attempt >= 12) {
-          throw new Error('Could not find visible "Add Item Price / Ø¥Ø¶Ø§ÙØ© Ø³Ø¹Ø± Ø§Ù„ØµÙ†Ù" button');
+          throw new Error('Could not find visible "Add Item Price / إضافة سعر الصنف" button');
         }
         return cy.wait(250, { log: false }).then(() => clickAddItemPriceButton(attempt + 1));
       }
@@ -2752,7 +2790,7 @@ export const getTotalAmountOfPurchaseInvoice = () => {
 
   return readPurchaseInvoiceAmount({
     fieldSelectors,
-    labelRegex: /^total$|total\s*amount|(?:اجمالي|إجمالي)\s*(?:القيمة|المبلغ)?|net\s*total/i,
+    labelRegex: /^total$|total\s*amount|(?:\u0627\u0644\u0645\u062c\u0645\u0648\u0639|\u0627\u0644\u0625\u062c\u0645\u0627\u0644\u064a)\s*(?:\u0627\u0644\u0643\u0644\u064a|\u0627\u0644\u0639\u0627\u0645)?|net\s*total/i,
     debugName: 'Total amount of purchase invoice',
   }).then((amountText) => {
     Cypress.log({ name: 'TotalPurchaseInvoice', message: amountText });
@@ -3370,7 +3408,7 @@ export const removeTaxesIfPresent = () => {
     const byText = $body
       .find('a.nav-link:visible, a[role="tab"]:visible')
       .toArray()
-      .find((el) => String(Cypress.$(el).text() || '').replace(/\s+/g, ' ').trim() === 'الضرائب والرسوم');
+      .find((el) => String(Cypress.$(el).text() || '').replace(/\s+/g, ' ').trim() === '??????? ???????');
 
     if (byText) {
       return cy.wrap(byText, { log: false })
@@ -3581,7 +3619,7 @@ export const compareReportAcrossV4V5 = ({ reportSelectors }) => {
 export const openGeneralLedgerReport = () => {
   waitForOverlay();
 
-  const viewBtnXpath = "(//*[normalize-space()='واجهة' and contains(@class, 'btn btn-default toolbar-btn')])[3]";
+  const viewBtnXpath = "(//*[normalize-space()='?????' and contains(@class, 'btn btn-default toolbar-btn')])[3]";
   const generalLedgerPattern = /\u062f\u0641\u062a\u0631\s*\u0627\u0644(?:\u0627|\u0623)\u0633\u062a\u0627\u0630\s*\u0627\u0644\u0639\u0627\u0645|\u0645\u0648\u0627\u0632\u0646\u0629\s*\u062f\u0641\u062a\u0631\s*\u0627\u0644(?:\u0627|\u0623)\u0633\u062a\u0627\u0630|general\s*ledger/i;
   const closeIconSelector = '.modal-dialog:visible .close:visible, .modal-dialog:visible [data-dismiss="modal"]:visible, .msgprint:visible .close:visible';
   const blockerSelector = '.modal-dialog:visible, .msgprint:visible';
@@ -3608,7 +3646,7 @@ export const openGeneralLedgerReport = () => {
         .toArray()
         .find((el) => {
           const txt = String(Cypress.$(el).text() || '').replace(/\s+/g, ' ').trim().toLowerCase();
-          return /نعم|yes|ok|موافق|اغلاق|إغلاق|close/.test(txt);
+          return /\u0646\u0639\u0645|yes|ok|\u062d\u0633\u0646\u0627\u064b|\u0645\u0648\u0627\u0641\u0642|\u0627\u063a\u0644\u0627\u0642|close/.test(txt);
         });
 
       if (actionTarget) {
@@ -3688,7 +3726,7 @@ export const openGeneralLedgerReportFromSalesInvoice = () => {
         .toArray()
         .find((el) => {
           const txt = String(Cypress.$(el).text() || '').replace(/\s+/g, ' ').trim().toLowerCase();
-          return /نعم|yes|ok|موافق|اغلاق|إغلاق|close/.test(txt);
+          return /\u0646\u0639\u0645|yes|ok|\u062d\u0633\u0646\u0627\u064b|\u0645\u0648\u0627\u0641\u0642|\u0627\u063a\u0644\u0627\u0642|close/.test(txt);
         });
 
       if (actionTarget) {
@@ -3733,12 +3771,12 @@ export const openGeneralLedgerReportFromSalesInvoice = () => {
       })
       .then(() =>
         cy.xpath(
-          "//*[normalize-space()='واجهة' and contains(@class, 'btn') and contains(@class, 'btn-default') and contains(@class, 'toolbar-btn')]",
+          "//*[normalize-space()='?????' and contains(@class, 'btn') and contains(@class, 'btn-default') and contains(@class, 'toolbar-btn')]",
           { timeout: LONG_TIMEOUT }
         )
           .then(($viewBtns) => {
             if (!$viewBtns.length) {
-              throw new Error('No "واجهة" button found on Sales Invoice page');
+              throw new Error('No "?????" button found on Sales Invoice page');
             }
 
             const visibleViewBtn = $viewBtns.toArray().find((el) => Cypress.dom.isVisible(el));
@@ -3771,3 +3809,14 @@ export const openGeneralLedgerReportFromSalesInvoice = () => {
       waitForOverlay();
     });
 };
+
+
+
+
+
+
+
+
+
+
+

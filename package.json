@@ -16,6 +16,7 @@
     "cypress-xpath": "^2.0.1"
   },
   "dependencies": {
-    "cypress": "^10.11.0"
+    "cypress": "^10.11.0",
+    "open-editor": "^6.0.0"
   }
 }

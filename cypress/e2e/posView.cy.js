@@ -1,7 +1,8 @@
-﻿/// <reference types="cypress" />
+/// <reference types="cypress" />
 
 import {
   getMigrationEnv,
+  getUiConfig,
   login,
   createItem,
   addItemPriceStandardSelling,
@@ -13,30 +14,7 @@ import {
   selectPurchaseReceiptItem,
   saveAndSubmitPurchaseReceipt,
 } from '../support/migrationHelpers';
-const rawBase =
-  Cypress.config('baseUrl') ||
-  Cypress.env('DAFATER_BASE_URL') ||
-  (Cypress.env('scope') === 'Regression'
-    ? 'https://temp-qc-tmp.dafater.biz'
-    : 'https://temp-qc-tmp.dafater.biz');
-
-const origin = (() => {
-  try {
-    return new URL(rawBase).origin;
-  } catch (e) {
-    return rawBase.split('#')[0].replace(/\/$/, '').split('/app')[0];
-  }
-})();
-
-const baseUrl = origin;
-
-const scope = Cypress.env('scope') || 'Regression'; // Mirrors TestNG Scope param
-const creds = {
-  username: Cypress.env('DAFATER_USER') || 'Administrator',
-  password:
-    Cypress.env('DAFATER_PASS') ||
-    (scope === 'Regression' ? 'AsDedpoEweWwerd' : 'AsDedpoEweWwerd'),
-};
+const getSharedUiConfig = () => Cypress.env('uiConfig') || getUiConfig();
 
 const ITEM_PRICE = Cypress.env('DAFATER_ITEM_PRICE') || '100';
 const OVERLAY = '.freeze-message-container';
@@ -48,12 +26,10 @@ describe('PosViewTest (Migrated from Selenium)', () => {
     const env = getMigrationEnv();
     const itemCode = `item ${Date.now()}`;
 
-     cy.log('open login');
-    cy.visit(`${baseUrl}/#login`);
 
     cy.log('enter credentials');
-    cy.get('#login_email, #login_id', { timeout: 20000 }).type(creds.username, { force: true });
-    cy.get('#login_password, #pass', { timeout: 20000 }).type(creds.password, { force: true });
+    cy.get('#login_email, #login_id', { timeout: 20000 }).type(getSharedUiConfig().creds.username, { force: true });
+    cy.get('#login_password, #pass', { timeout: 20000 }).type(getSharedUiConfig().creds.password, { force: true });
     cy.get('#login_btn').click();
     waitForOverlay();
     createItem(itemCode);
@@ -72,16 +48,18 @@ describe('PosViewTest (Migrated from Selenium)', () => {
       .then((statusText) => {
         const actualStatus = String(statusText).replace(/\s+/g, ' ').trim();
         cy.log(`Purchase Receipt status value: ${actualStatus}`);
-        expect(actualStatus).to.contain('معتمد');
+        expect(actualStatus).to.contain('\u0645\u0639\u062a\u0645\u062f');
       });
 
 
 
     openSalesInvoicesList();
-    clickNewPrimaryAction();
+    // clickNewPrimaryAction();
+    clickNewPrimaryAction('إضافة فاتورة المبيعات');
+
     waitForOverlay();
 
-    cy.contains('button', 'واجهة نقاط البيع', { timeout: 120000 }).click({ force: true });
+    clickNewPrimaryAction('واجهة نقاط البيع');
     waitForOverlay();
 
     cy.get('input.input-with-feedback.form-control[data-fieldtype="Data"]', { timeout: 120000 }).first().type(itemCode, { force: true });
@@ -121,7 +99,7 @@ cy.contains('div.item-name', itemCode, { timeout: 120000 })
     openSalesInvoicesList();
     clickNewPrimaryAction();
     waitForOverlay();
-    cy.contains('button', 'واجهة نقاط البيع', { timeout: 120000 }).click({ force: true });
+    cy.contains('button', '????? ???? ?????', { timeout: 120000 }).click({ force: true });
 
     cy.get('input.input-with-feedback.form-control[data-fieldtype="Data"]', { timeout: 120000 }).first().type(itemCode, { force: true });
     cy.contains('div', itemCode, { timeout: 120000 }).first().click({ force: true });
@@ -135,3 +113,8 @@ cy.contains('div.item-name', itemCode, { timeout: 120000 })
     cy.get('.btn.btn-primary.btn-sm.btn-modal-primary', { timeout: 120000 }).first().click({ force: true });
   });
 });
+
+
+
+
+
