@@ -1,4 +1,4 @@
-﻿/// <reference types="cypress" />
+/// <reference types="cypress" />
 
 import {
   getMigrationEnv,
@@ -12,9 +12,9 @@ import {
 } from '../support/migrationHelpers';
 
 describe('DataMigrationTest (Migrated from Selenium)', () => {
-  const clientKey = Cypress.env('DAFATER_CLIENT_KEY') || 'hmce-v4';
-  const validSecret = Cypress.env('DAFATER_SECRET_KEY') || '3zFG68L4T89';
-  const invalidSecret = Cypress.env('DAFATER_INVALID_SECRET_KEY') || 'kX7NY9yMSag4';
+  const clientKey = Cypress.expose('DAFATER_CLIENT_KEY') || 'hmce-v4';
+  const validSecret = Cypress.expose('DAFATER_SECRET_KEY') || '3zFG68L4T89';
+  const invalidSecret = Cypress.expose('DAFATER_INVALID_SECRET_KEY') || 'kX7NY9yMSag4';
 
   it('TC01_checkFailureVmConnection', () => {
     const env = getMigrationEnv();
@@ -52,3 +52,4 @@ describe('DataMigrationTest (Migrated from Selenium)', () => {
     });
   });
 });
+

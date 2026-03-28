@@ -14,9 +14,9 @@ import {
   selectPurchaseReceiptItem,
   saveAndSubmitPurchaseReceipt,
 } from '../support/migrationHelpers';
-const getSharedUiConfig = () => Cypress.env('uiConfig') || getUiConfig();
+const getSharedUiConfig = () => Cypress.expose('uiConfig') || getUiConfig();
 
-const ITEM_PRICE = Cypress.env('DAFATER_ITEM_PRICE') || '100';
+const ITEM_PRICE = Cypress.expose('DAFATER_ITEM_PRICE') || '100';
 const OVERLAY = '.freeze-message-container';
 const LONG_TIMEOUT = 200000;
 
@@ -113,6 +113,7 @@ cy.contains('div.item-name', itemCode, { timeout: 120000 })
     cy.get('.btn.btn-primary.btn-sm.btn-modal-primary', { timeout: 120000 }).first().click({ force: true });
   });
 });
+
 
 
 

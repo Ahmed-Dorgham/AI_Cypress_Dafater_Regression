@@ -1,4 +1,4 @@
-const LONG_TIMEOUT = 60000;
+const LONG_TIMEOUT = 90000;
 const OVERLAY = '.freeze-message-container';
 const FULL_SCREEN_TEXT_RE = /\u0639\u0631\u0636\s*\u0627\u0644\u0634\u0627\u0634\u0629\s*\u0643\u0627\u0645\u0644\u0629|full\s*screen/i;
 
@@ -34,9 +34,24 @@ const typeFirstExisting = (selectors, value, label) => {
 
 const pickFirstDynamicOption = (selectors, value, label) => {
   const combined = selectors.join(', ');
-  const OPTIONS_INITIAL_WAIT_MS = 1200;
-  const OPTIONS_RETRY_WAIT_MS = 400;
-  const OPTIONS_MAX_ATTEMPTS = 40;
+  const OPTIONS_INITIAL_WAIT_MS = 250;
+  const OPTIONS_RETRY_WAIT_MS = 200;
+  const OPTIONS_MAX_ATTEMPTS = 20;
+  const normalizedValue = String(value || '').replace(/\s+/g, ' ').trim().toLowerCase();
+
+  const getOptionSelectors = ($body, target) => {
+    const $target = Cypress.$(target);
+    const dataTarget = $target.attr('data-target');
+    const byDataTarget = dataTarget
+      ? $body.find(`[data-target="${dataTarget}"] + ul li:visible, [data-target="${dataTarget}"] ~ ul li:visible`)
+      : Cypress.$();
+    const fallback = $body.find(
+      'ul.awesomplete li:visible, .awesomplete [role="option"]:visible, [role="listbox"] li:visible, [role="option"]:visible'
+    );
+
+    return byDataTarget.length ? byDataTarget : fallback;
+  };
+
   const resolveVisibleTarget = (attempt = 0) =>
     cy.get('body', { timeout: LONG_TIMEOUT }).then(($body) => {
       const found = $body.find(combined).toArray();
@@ -49,58 +64,48 @@ const pickFirstDynamicOption = (selectors, value, label) => {
       if (attempt >= OPTIONS_MAX_ATTEMPTS) {
         throw new Error(`Could not find visible ${label} using selectors: ${combined}`);
       }
-      if (found.length) {
-        const $raw = Cypress.$(found[0]);
-        const anchor = $raw.closest('.frappe-control, .grid-row, .grid-body, .section-body, .form-layout, .form-page')[0]
-          || $raw.parents(':visible').last()[0]
-          || found[0];
-        return cy
-          .wrap(anchor, { log: false })
-          .scrollIntoView({ offset: { top: -140, left: 0 } })
-          .wait(OPTIONS_RETRY_WAIT_MS, { log: false })
-          .then(() => resolveVisibleTarget(attempt + 1));
-      }
+
       return cy.wait(OPTIONS_RETRY_WAIT_MS, { log: false }).then(() => resolveVisibleTarget(attempt + 1));
     });
 
-  return resolveVisibleTarget().then((target) => {
-    const clickFirstOption = (attempt = 0) =>
-      cy.get('body', { timeout: LONG_TIMEOUT }).then(($body) => {
-        const $target = Cypress.$(target);
-        const dataTarget = $target.attr('data-target');
-
-        const byDataTarget = dataTarget
-          ? $body.find(`[data-target="${dataTarget}"] + ul li:visible, [data-target="${dataTarget}"] ~ ul li:visible`)
-          : Cypress.$();
-        const fallback = $body.find(
-          'ul.awesomplete li:visible, .awesomplete [role="option"]:visible, .awesomplete li:visible, [role="listbox"] li:visible, [role="option"]:visible'
-        );
-        const options = byDataTarget.length ? byDataTarget : fallback;
-
-        if (options.length) {
-          return cy.wrap(options[0], { log: false }).click({ force: true });
-        }
-
-        if (attempt >= OPTIONS_MAX_ATTEMPTS) {
-          const waitedMs = OPTIONS_INITIAL_WAIT_MS + (OPTIONS_RETRY_WAIT_MS * OPTIONS_MAX_ATTEMPTS);
-          throw new Error(`No options appeared for ${label} after waiting ${waitedMs}ms`);
-        }
-        return cy.wait(OPTIONS_RETRY_WAIT_MS, { log: false }).then(() => clickFirstOption(attempt + 1));
+  const clickBestOption = (target, attempt = 0) =>
+    cy.get('body', { timeout: LONG_TIMEOUT }).then(($body) => {
+      const options = getOptionSelectors($body, target).toArray();
+      const matchingOpt = options.find((el) => {
+        const optionText = String(Cypress.$(el).text() || '').replace(/\s+/g, ' ').trim().toLowerCase();
+        return normalizedValue ? optionText.includes(normalizedValue) : false;
       });
+      const chosenOpt = matchingOpt || options[0];
 
-    let chain = cy.wrap(target, { log: false }).scrollIntoView().click({ force: true });
+      if (chosenOpt) {
+        return cy.wrap(chosenOpt, { log: false })
+          .scrollIntoView({ offset: { top: -120, left: 0 } })
+          .click({ force: true });
+      }
+
+      if (attempt >= OPTIONS_MAX_ATTEMPTS) {
+        throw new Error(`No options appeared for ${label}`);
+      }
+
+      return cy.wait(OPTIONS_RETRY_WAIT_MS, { log: false }).then(() => clickBestOption(target, attempt + 1));
+    });
+
+  return resolveVisibleTarget().then((target) => {
+    let chain = cy.wrap(target, { log: false })
+      .scrollIntoView({ offset: { top: -120, left: 0 } })
+
     if (value !== undefined && value !== null && String(value) !== '') {
-      chain = chain.clear({ force: true }).type(String(value), { force: true });
+      chain = chain.clear({ force: true }).type(String(value), { force: true, delay: 0 });
     }
+
     return chain
-      .type('{downarrow}', { force: true })
       .wait(OPTIONS_INITIAL_WAIT_MS, { log: false })
-      .then(() => clickFirstOption());
+      .then(() => clickBestOption(target));
   });
 };
 
-export const getUiConfig = () => Cypress.env('uiConfig');
-export const getMigrationEnv = () => Cypress.env('migrationEnv');
+export const getUiConfig = () => Cypress.expose('uiConfig');
+export const getMigrationEnv = () => Cypress.expose('migrationEnv');
 
 export const waitForOverlay = () => {
   return cy.get('body', { timeout: LONG_TIMEOUT }).then(($body) => {
@@ -256,19 +261,19 @@ export const clickNewPrimaryAction = (buttonText) => {
               && normalize($el.attr('data-action-name') || $el.attr('data-action_name')) === targetAction;
           }) || $target;
 
-        return cy.wrap(freshTarget, { log: false }).scrollIntoView().click({ force: true }).then(() => {
-          // Some pages render "Full Screen" a moment after clicking Create/New.
-          return clickFullScreenIfPresent();
-        });
+        return cy.wrap(Cypress.$(freshTarget), { log: false })
+          .scrollIntoView()
+          .click({ force: true })
+          .then(() => {
+            // Some pages render "Full Screen" a moment after clicking Create/New.
+            return clickFullScreenIfPresent();
+          });
       });
     };
-
     return clickExactButtonText().then((exactTextClicked) => {
       if (exactTextClicked) return;
-
       return clickPreferredDocByText().then((preferredClicked) => {
         if (preferredClicked) return;
-
       const target = candidates.find((el) => {
         const $el = Cypress.$(el);
         const text = normalize($el.text());
@@ -333,7 +338,7 @@ const clickFullScreenAndEnsureHidden = ({ required = false, searchAttempts = 12,
         throw new Error('Full-screen button is still visible after clicking');
       }
 
-      return cy.wrap(target, { log: false })
+      return cy.wrap(Cypress.$(target), { log: false })
         .scrollIntoView({ offset: { top: -120, left: 0 } })
         .click({ force: true })
         .then(() => waitForOverlay())
@@ -411,7 +416,7 @@ const clickAddItemButtonIfPresent = () =>
 
     if (!target) return false;
 
-    return cy.wrap(target, { log: false })
+    return cy.wrap(Cypress.$(target), { log: false })
       .scrollIntoView({ offset: { top: -120, left: 0 } })
       .click({ force: true })
       .then(() => waitForOverlay().then(() => true));
@@ -516,7 +521,7 @@ export const selectDeliveryNoteCustomer = () => {
           .then(() => clickFirstCustomerOption(attempt + 1));
       });
 
-    return clickFirstCustomerOption();
+    return cy.wait(250, { log: false }).then(() => clickFirstCustomerOption());
   });
 };
 
@@ -1050,15 +1055,45 @@ export const openSalesOrdersListPage = () => {
 };
 
 export const clickOnNewSalesOrdersBtn = () => {
+  const targetText = '\u0625\u0636\u0627\u0641\u0629 \u0623\u0645\u0631 \u0645\u0628\u064a\u0639\u0627\u062a';
+  const normalizeText = (value) => String(value || '').replace(/\s+/g, ' ').trim();
+  const getDecodedLabel = (el) => {
+    const rawLabel = Cypress.$(el).attr('data-label');
+    if (!rawLabel) return '';
+    try {
+      return decodeURIComponent(rawLabel);
+    } catch (e) {
+      return rawLabel;
+    }
+  };
+
   waitForOverlay();
-  cy.contains(
-    'button:visible, .btn:visible, [role="button"]:visible',
-    /add\s*sales\s*order/i,
-    { timeout: LONG_TIMEOUT }
-  )
-    .first()
-    .scrollIntoView({ offset: { top: -120, left: 0 } })
-    .click({ force: true });
+  cy.get('body', { timeout: LONG_TIMEOUT }).should(($body) => {
+    const target = $body
+      .find('button:visible, .btn:visible, [role="button"]:visible')
+      .toArray()
+      .find((el) => {
+        const text = normalizeText(Cypress.$(el).text());
+        const label = normalizeText(getDecodedLabel(el));
+        return text === targetText || label === targetText || text.includes(targetText) || label.includes(targetText);
+      });
+
+    expect(target, 'visible sales order button').to.exist;
+  });
+
+  cy.get('button:visible, .btn:visible, [role="button"]:visible', { timeout: LONG_TIMEOUT })
+    .then(($buttons) => {
+      const target = [...$buttons].find((el) => {
+        const text = normalizeText(Cypress.$(el).text());
+        const label = normalizeText(getDecodedLabel(el));
+        return text === targetText || label === targetText || text.includes(targetText) || label.includes(targetText);
+      });
+
+      expect(target, 'visible sales order button').to.exist;
+      cy.wrap(target)
+        .scrollIntoView({ offset: { top: -120, left: 0 } })
+        .click({ force: true });
+    });
   waitForOverlay();
 };
 
@@ -1099,7 +1134,7 @@ export const fillSalesOrderCore = (itemName) => {
           .then(() => clickFirstCustomerOption(attempt + 1));
       });
 
-    return clickFirstCustomerOption();
+    return cy.wait(250, { log: false }).then(() => clickFirstCustomerOption());
   });
 
   cy.get(
@@ -1290,7 +1325,7 @@ export const createNewSalesInvoiceFromSalesOrder = () => {
         });
 
       if (target) {
-        return cy.wrap(target, { log: false })
+        return cy.wrap(Cypress.$(target), { log: false })
           .scrollIntoView({ offset: { top: -120, left: 0 } })
           .click({ force: true });
       }
@@ -1319,7 +1354,7 @@ export const createNewSalesInvoiceFromSalesOrder = () => {
         });
 
       if (target) {
-        return cy.wrap(target, { log: false })
+        return cy.wrap(Cypress.$(target), { log: false })
           .scrollIntoView({ offset: { top: -120, left: 0 } })
           .click({ force: true });
       }
@@ -1339,14 +1374,34 @@ export const createNewSalesInvoiceFromSalesOrder = () => {
 };
 
 export const saveAndSubmitSalesInvoiceFromDeliveryNote = () => {
-  cy.get('body', { timeout: LONG_TIMEOUT }).then(($body) => {
-    const updateStock = $body.find('#update_stock:visible, input[data-fieldname="update_stock"]:visible')[0];
-    if (updateStock && Cypress.$(updateStock).is(':checked')) {
-      cy.wrap(updateStock, { log: false })
-        .scrollIntoView({ offset: { top: -120, left: 0 } })
+  const updateStockSelector = 'input#update_stock[data-fieldname="update_stock"][data-doctype="Sales Invoice"], input[data-fieldname="update_stock"][data-doctype="Sales Invoice"]';
+
+  waitForOverlay();
+  cy.get(updateStockSelector, { timeout: LONG_TIMEOUT })
+    .first()
+    .then(($el) => {
+      if (!$el.length || !$el.is(':checked')) {
+        return;
+      }
+
+      cy.wrap($el, { log: false })
+        .then(($rawEl) => {
+          $rawEl[0].scrollIntoView({ block: 'center', inline: 'nearest' });
+        })
+        .wait(500, { log: false });
+
+      cy.get(updateStockSelector, { timeout: LONG_TIMEOUT })
+        .first()
+        .then(($freshEl) => {
+          $freshEl[0].scrollIntoView({ block: 'center', inline: 'nearest' });
+        })
+        .should('be.visible')
+        .should('not.be.disabled')
         .click({ force: true });
-    }
-  });
+
+      cy.wait(1000, { log: false });
+      waitForOverlay();
+    });
 
   submitSalesInvoice();
 
@@ -1634,7 +1689,7 @@ export const openCompaniesListPage = () => {
         .toArray()[0];
 
       if (target) {
-        return cy.wrap(target, { log: false })
+        return cy.wrap(Cypress.$(target), { log: false })
           .scrollIntoView({ offset: { top: -120, left: 0 } })
           .click({ force: true });
       }
@@ -1652,7 +1707,7 @@ export const openCompaniesListPage = () => {
 
 export const openSpecificCompany = (companyName = '') => {
   waitForOverlay();
-  const normalizedName = String(companyName || Cypress.env('DAFATER_COMPANY_NAME') || '').trim().toLowerCase();
+  const normalizedName = String(companyName || Cypress.expose('DAFATER_COMPANY_NAME') || '').trim().toLowerCase();
   const normalize = (value) => String(value || '').replace(/\s+/g, ' ').trim().toLowerCase();
 
   const openRow = (attempt = 0) =>
@@ -1928,7 +1983,7 @@ export const openItemPricePage = () => {
         return cy.wait(250, { log: false }).then(() => clickAddItemPriceButton(attempt + 1));
       }
 
-      return cy.wrap(target, { log: false })
+      return cy.wrap(Cypress.$(target), { log: false })
         .scrollIntoView({ offset: { top: -120, left: 0 } })
         .click({ force: true });
     });
@@ -2158,8 +2213,7 @@ export const selectSalesInvoiceCustomer = () => {
 
   cy.get('@salesInvoiceCustomerField')
     .scrollIntoView({ offset: { top: -120, left: 0 } })
-    .click({ force: true })
-    .type('{downarrow}', { force: true });
+    .click({ force: true });
 
   cy.get('@salesInvoiceCustomerField').should(($input) => {
     const expanded = String($input.attr('aria-expanded') || '').toLowerCase() === 'true';
@@ -2178,23 +2232,21 @@ export const selectSalesInvoiceCustomer = () => {
 
     const clickFirstCustomerOption = (attempt = 0) =>
       cy.get('body', { timeout: LONG_TIMEOUT }).then(($body) => {
-        const opts = $body.find(optionSelectors);
+        const opts = $body.find(optionSelectors).toArray();
         if (opts.length) {
-          return cy.wrap(opts[0], { log: false }).click({ force: true });
+          return cy.wrap(opts[0], { log: false })
+            .scrollIntoView({ offset: { top: -120, left: 0 } })
+            .click({ force: true });
         }
 
         if (attempt >= 20) {
-          throw new Error('Sales invoice customer options appeared briefly but could not click the first option');
+          throw new Error('Sales invoice customer options did not appear.');
         }
 
-        return cy
-          .get('@salesInvoiceCustomerField', { log: false })
-          .type('{downarrow}', { force: true })
-          .wait(180, { log: false })
-          .then(() => clickFirstCustomerOption(attempt + 1));
+        return cy.wait(200, { log: false }).then(() => clickFirstCustomerOption(attempt + 1));
       });
 
-    return clickFirstCustomerOption();
+    return cy.wait(250, { log: false }).then(() => clickFirstCustomerOption());
   });
 };
 
@@ -2274,14 +2326,10 @@ export const selectSalesInvoiceItem = (itemCode) => {
             throw new Error(`Sales invoice item options appeared but no option matched item code: ${String(itemCode)}`);
           }
 
-          return cy
-            .get('@salesInvoiceItemField', { log: false })
-            .type('{downarrow}', { force: true })
-            .wait(180, { log: false })
-            .then(() => clickMatchingItemOption(attempt + 1));
+          return cy.wait(200, { log: false }).then(() => clickMatchingItemOption(attempt + 1));
         });
 
-      return clickMatchingItemOption();
+      return cy.wait(250, { log: false }).then(() => clickMatchingItemOption());
     });
 
   cy.get('#sales-invoice-__details-tab, a[data-fieldname="__details"][href="#sales-invoice-__details"]', { timeout: LONG_TIMEOUT })
@@ -2384,35 +2432,58 @@ export const saveSalesInvoice = () => {
 };
 
 export const submitSalesInvoice = () => {
-  cy.get('body', { timeout: LONG_TIMEOUT }).then(($body) => {
-    const normalize = (v) =>
-      String(v || '')
-        .replace(/[???]/g, '?')
-        .replace(/\s+/g, ' ')
-        .trim()
-        .toLowerCase();
+  const submitSelector = 'button:not(.hide), .btn:not(.hide), [role="button"]:not(.hide), [id^="appframe-btn-"]:not(.hide)';
+  const visibleSubmitSelector = 'button:visible:not(.hide), .btn:visible:not(.hide), [role="button"]:visible:not(.hide), [id^="appframe-btn-"]:visible:not(.hide)';
+  const submitText = /\u062d\u0641\u0638\s*\u0648\u0627\u0639\u062a\u0645\u0627\u062f|submit/i;
 
-    const target = $body
-      .find('button:visible, .btn:visible, [role="button"]:visible, [id^="appframe-btn-"]:visible')
+  waitForOverlay();
+  cy.get('body', { timeout: LONG_TIMEOUT }).then(($body) => {
+    const visibleTarget = $body
+      .find(visibleSubmitSelector)
       .toArray()
       .find((el) => {
         const $el = Cypress.$(el);
-        const text = normalize($el.text());
-        const id = normalize($el.attr('id'));
-        const action = normalize($el.attr('data-action_name') || $el.attr('data-action-name'));
-        const cls = normalize($el.attr('class'));
-        const isSubmit = text.includes('??? ???????') || text.includes('??????') || text.includes('submit') || action === 'submit' || cls.includes('save-submit-action');
-        const isSaveOnly = (text === '???' || text === 'save') || action === 'save';
-        return isSubmit && !isSaveOnly;
+        const text = String($el.text() || '').replace(/\s+/g, ' ').trim();
+        return submitText.test(text) && !$el.prop('disabled');
       });
 
+    const fallbackTarget = $body
+      .find(submitSelector)
+      .toArray()
+      .find((el) => {
+        const $el = Cypress.$(el);
+        const text = String($el.text() || '').replace(/\s+/g, ' ').trim();
+        return submitText.test(text) && !$el.prop('disabled');
+      });
+
+    const target = visibleTarget || fallbackTarget;
+
     if (!target) {
-      throw new Error('Could not find visible "??? ??????? / Submit" button by text');
+      throw new Error('Could not find submit button by text');
     }
 
-    cy.wrap(target, { log: false })
-      .scrollIntoView({ offset: { top: -120, left: 0 } })
-      .click({ force: true });
+    return cy.wrap(Cypress.$(target), { log: false })
+      .then(($el) => {
+        $el[0].scrollIntoView({ block: 'center', inline: 'nearest' });
+      })
+      .wait(700, { log: false })
+      .then(() => {
+        return cy.get('body', { timeout: LONG_TIMEOUT }).then(($freshBody) => {
+          const freshVisibleTarget = $freshBody
+            .find(visibleSubmitSelector)
+            .toArray()
+            .find((el) => {
+              const $el = Cypress.$(el);
+              const text = String($el.text() || '').replace(/\s+/g, ' ').trim();
+              return submitText.test(text) && !$el.prop('disabled');
+            });
+
+          const freshTarget = freshVisibleTarget || target;
+          return cy.wrap(Cypress.$(freshTarget), { log: false })
+            .should('be.visible')
+            .click({ force: true });
+        });
+      });
   });
 
   cy.contains(
@@ -2895,7 +2966,7 @@ export const submitPurchaseInvoiceWithoutUpdateStock = () => {
           throw new Error('Could not find visible "Save and Submit" button');
         }
 
-        return cy.wrap(target, { log: false })
+        return cy.wrap(Cypress.$(target), { log: false })
           .scrollIntoView({ offset: { top: -120, left: 0 } })
           .click({ force: true });
       });
@@ -2914,7 +2985,7 @@ export const submitPurchaseInvoiceWithoutUpdateStock = () => {
             });
 
           if (target) {
-            return cy.wrap(target, { log: false })
+            return cy.wrap(Cypress.$(target), { log: false })
               .scrollIntoView({ offset: { top: -120, left: 0 } })
               .click({ force: true });
           }
@@ -2958,7 +3029,7 @@ export const openCreateMenuAndChoose = (choicePatterns) => {
         });
 
       if (target) {
-        return cy.wrap(target, { log: false })
+        return cy.wrap(Cypress.$(target), { log: false })
           .scrollIntoView({ offset: { top: -120, left: 0 } })
           .click({ force: true });
       }
@@ -2988,7 +3059,7 @@ export const openCreateMenuAndChoose = (choicePatterns) => {
       });
 
       if (target) {
-        return cy.wrap(target, { log: false })
+        return cy.wrap(Cypress.$(target), { log: false })
           .scrollIntoView({ offset: { top: -120, left: 0 } })
           .click({ force: true });
       }
@@ -3760,7 +3831,6 @@ export const openGeneralLedgerReportFromSalesInvoice = () => {
           '.form-page:visible',
           '.form-tab-content:visible',
           '.page-content:visible',
-          '.page-body:visible',
         ].forEach((selector) => {
           $body.find(selector).each((_, el) => {
             if (el && typeof el.scrollTop === 'number') {
@@ -3769,11 +3839,10 @@ export const openGeneralLedgerReportFromSalesInvoice = () => {
           });
         });
       })
-      .then(() =>
-        cy.xpath(
-          "//*[normalize-space()='?????' and contains(@class, 'btn') and contains(@class, 'btn-default') and contains(@class, 'toolbar-btn')]",
-          { timeout: LONG_TIMEOUT }
-        )
+      .then(() => {
+        cy.reload();
+        return cy.contains('button.btn.btn-default.toolbar-btn', /^\s*\u0648\u0627\u062c\u0647\u0629\s*$/, { timeout: LONG_TIMEOUT })
+          .scrollIntoView()
           .then(($viewBtns) => {
             if (!$viewBtns.length) {
               throw new Error('No "?????" button found on Sales Invoice page');
@@ -3785,18 +3854,10 @@ export const openGeneralLedgerReportFromSalesInvoice = () => {
             return cy.wrap(targetViewBtn, { log: false })
               .scrollIntoView()
               .click({ force: true });
-          })
-      );
+          });
+      });
 
   return cy
-    .then(() => dismissBlockingPopup())
-    .then(() => {
-      waitForOverlay();
-    })
-    .then(() => dismissBlockingPopup())
-    .then(() => {
-      waitForOverlay();
-    })
     .then(() => clickSalesInvoiceViewButton())
     .then(() =>
       cy.contains('a:visible, button:visible, [role=\"menuitem\"]:visible, .dropdown-item:visible', generalLedgerPattern, { timeout: LONG_TIMEOUT })
@@ -3809,6 +3870,47 @@ export const openGeneralLedgerReportFromSalesInvoice = () => {
       waitForOverlay();
     });
 };
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 

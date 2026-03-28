@@ -1,42 +1,50 @@
 // Ensure xpath commands are registered for all specs.
 import 'cypress-xpath';
 
-export const getUiConfig = () => {
-  const scope = Cypress.env('scope') || 'Regression';
-  const rawBase =
-    Cypress.env('DAFATER_BASE_URL') ||
-    Cypress.env('DAFATER_V5_URL') ||
-    Cypress.config('baseUrl') ||
-    'https://dafater-qc-1.dafater.biz';
-
+const normalizeBaseUrl = (rawBase) => {
   let origin = String(rawBase);
   try {
     origin = new URL(String(rawBase)).origin;
   } catch (e) {
     origin = String(rawBase).split('#')[0].replace(/\/$/, '').split('/app')[0];
   }
+  return origin;
+};
+
+const buildUiConfig = (rawEnv = {}) => {
+  const scope = rawEnv.scope || 'Regression';
+  const rawBase =
+    rawEnv.DAFATER_BASE_URL ||
+    rawEnv.DAFATER_V5_URL ||
+    Cypress.config('baseUrl') ||
+    'https://temp-qc-tmp.dafater.biz';
 
   return {
     scope,
     rawBase,
-    baseUrl: origin,
+    baseUrl: normalizeBaseUrl(rawBase),
     creds: {
-      username: Cypress.env('DAFATER_USER') || Cypress.env('DAFATER_USER_5') || 'Administrator',
-      password: Cypress.env('DAFATER_PASS') || Cypress.env('DAFATER_PASS_5') || '012345MM@@',
+      username: rawEnv.DAFATER_USER || rawEnv.DAFATER_USER_5 || 'Administrator',
+      // password: rawEnv.DAFATER_PASS || rawEnv.DAFATER_PASS_5 || '012345MM@@',
+      password: rawEnv.DAFATER_PASS || rawEnv.DAFATER_PASS_5 || 'AsDedpoEweWwerd',
     },
   };
 };
 
-export const getMigrationEnv = () => ({
-  v4Url: Cypress.env('DAFATER_V4_URL') || 'https://almorished-v4.dafater.biz/index.html',
-  v5Url: Cypress.env('DAFATER_V5_URL') || 'http://temp-qc-tmp.dafater.biz/#login',
-  user4: Cypress.env('DAFATER_USER_4') || 'Administrator',
-  pass4: Cypress.env('DAFATER_PASS_4') || 'cAAscAAxhv7N',
-  user5: Cypress.env('DAFATER_USER_5') || 'Administrator',
-  pass5: Cypress.env('DAFATER_PASS_5') || '012345MM@@',
-// AsDedpoEweWwerd
-  itemPrice: Cypress.env('DAFATER_ITEM_PRICE') || '100',
+const buildMigrationEnv = (rawEnv = {}) => ({
+  v4Url: rawEnv.DAFATER_V4_URL || 'https://almorished-v4.dafater.biz/index.html',
+  v5Url: rawEnv.DAFATER_V5_URL || 'https://temp-qc-tmp.dafater.biz/#login',
+  user4: rawEnv.DAFATER_USER_4 || 'Administrator',
+  pass4: rawEnv.DAFATER_PASS_4 || 'cAAscAAxhv7N',
+  user5: rawEnv.DAFATER_USER_5 || 'Administrator',
+  // pass5: rawEnv.DAFATER_PASS_5 || '012345MM@@',
+    pass5: rawEnv.DAFATER_PASS_5 || 'AsDedpoEweWwerd',
+  itemPrice: rawEnv.DAFATER_ITEM_PRICE || '100',
 });
+
+export const getUiConfig = () => Cypress.expose('uiConfig');
+export const getMigrationEnv = () => Cypress.expose('migrationEnv');
+
 // Ignore specific app error to keep test run green when setAttribute issue surfaces.
 Cypress.on('window:before:load', (win) => {
   // Suppress app-level onerror to avoid slider script crashes from blocking tests.
@@ -127,6 +135,8 @@ Cypress.on('uncaught:exception', (err) => {
 const clearBrowserState = () => {
   cy.clearCookies({ log: false });
   cy.clearLocalStorage({ log: false });
+  cy.clearAllLocalStorage({ log: false });
+  cy.clearAllSessionStorage({ log: false });
 
   cy.window({ log: false }).then((win) => {
     try {
@@ -135,80 +145,64 @@ const clearBrowserState = () => {
     } catch (e) {
       // ignore storage clearing failures
     }
-
-    if (win.indexedDB && typeof win.indexedDB.databases === 'function') {
-      return win.indexedDB.databases().then((dbs) =>
-        Cypress.Promise.all(
-          (dbs || []).map((db) =>
-            new Cypress.Promise((resolve) => {
-              if (!db || !db.name) return resolve();
-              const req = win.indexedDB.deleteDatabase(db.name);
-              req.onsuccess = () => resolve();
-              req.onerror = () => resolve();
-              req.onblocked = () => resolve();
-            })
-          )
-        )
-      ).then(() => {
-        if (!win.caches || typeof win.caches.keys !== 'function') return;
-        return win.caches.keys().then((keys) => Cypress.Promise.all(keys.map((key) => win.caches.delete(key))));
-      });
-    }
-
-    if (win.caches && typeof win.caches.keys === 'function') {
-      return win.caches.keys().then((keys) => Cypress.Promise.all(keys.map((key) => win.caches.delete(key))));
-    }
   });
 };
+
 beforeEach(() => {
-  const resolvedConfig = getUiConfig();
-  const migrationEnv = getMigrationEnv();
-  const rawBaseUrl =
-    Cypress.env('DAFATER_BASE_URL') ||
-    Cypress.env('DAFATER_V5_URL') ||
-    resolvedConfig.rawBase;
+  return cy.env([
+    'scope',
+    'DAFATER_BASE_URL',
+    'DAFATER_V5_URL',
+    'DAFATER_USER',
+    'DAFATER_USER_5',
+    'DAFATER_PASS',
+    'DAFATER_PASS_5',
+    'DAFATER_V4_URL',
+    'DAFATER_USER_4',
+    'DAFATER_PASS_4',
+    'DAFATER_ITEM_PRICE',
+    'DAFATER_COMPANY_NAME',
+    'DAFATER_CLIENT_KEY',
+    'DAFATER_SECRET_KEY',
+    'DAFATER_INVALID_SECRET_KEY'
+  ]).then((rawEnv = {}) => {
+    const uiConfig = buildUiConfig(rawEnv);
+    const migrationEnv = buildMigrationEnv(rawEnv);
+    const rawBaseUrl =
+      rawEnv.DAFATER_BASE_URL ||
+      rawEnv.DAFATER_V5_URL ||
+      uiConfig.rawBase;
+    const baseUrl = normalizeBaseUrl(rawBaseUrl);
+    const exposedEnv = {
+      ...rawEnv,
+      uiConfig: {
+        ...uiConfig,
+        rawBase: rawBaseUrl,
+        baseUrl,
+      },
+      migrationEnv,
+      baseUrl,
+      scope: uiConfig.scope,
+      creds: uiConfig.creds,
+    };
 
-  let baseUrl = String(rawBaseUrl);
-  try {
-    baseUrl = new URL(String(rawBaseUrl)).origin;
-  } catch (e) {
-    baseUrl = String(rawBaseUrl).split('#')[0].replace(/\/$/, '').split('/app')[0];
-  }
+    Cypress.expose(exposedEnv);
 
-  const uiConfig = {
-    ...resolvedConfig,
-    rawBase: rawBaseUrl,
-    baseUrl,
-  };
-  const { scope, creds } = uiConfig;
+    cy.log('clear browser state');
+    clearBrowserState();
 
-  Cypress.env('uiConfig', uiConfig);
-  Cypress.env('migrationEnv', migrationEnv);
-  Cypress.env('baseUrl', baseUrl);
-  Cypress.env('scope', scope);
-  Cypress.env('creds', creds);
-
-  cy.log('clear browser state');
-  clearBrowserState();
-
-  cy.log('open login');
-  cy.visit(`${baseUrl}/#login`, {
-    onBeforeLoad(win) {
-      try {
-        win.localStorage.clear();
-        win.sessionStorage.clear();
-      } catch (e) {
-        // ignore storage clearing failures
-      }
-    },
+    cy.log('open login');
+    cy.visit(`${baseUrl}/#login`, {
+      onBeforeLoad(win) {
+        try {
+          win.localStorage.clear();
+          win.sessionStorage.clear();
+        } catch (e) {
+          // ignore storage clearing failures
+        }
+      },
+    });
   });
 });
-
-
-
-
-
-
-
 
 

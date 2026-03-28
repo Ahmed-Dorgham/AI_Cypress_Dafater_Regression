@@ -1,4 +1,4 @@
-﻿/// <reference types="cypress" />
+/// <reference types="cypress" />
 
 import {
   getMigrationEnv,
@@ -105,7 +105,7 @@ const logPaymentIndicatorText = () => {
 const LONG_TIMEOUT = 120000;
 
 const normalizeDigitsToAscii = (value) =>
-  String(value || '').replace(/[٠-٩]/g, (digit) => String('٠١٢٣٤٥٦٧٨٩'.indexOf(digit)));
+  String(value || '').replace(/[?-?]/g, (digit) => String('??????????'.indexOf(digit)));
 
 const normalizeComparableText = (value) =>
   normalizeDigitsToAscii(value)
@@ -158,7 +158,7 @@ const scrollGeneralLedgerTableDown = () =>
   scrollPageToGeneralLedgerTable().wait(220, { log: false });
 
 const openSpecificCompanyWithoutScrollIntoView = (companyName = '') => {
-  const normalizedName = normalizeComparableText(companyName || Cypress.env('DAFATER_COMPANY_NAME') || '');
+  const normalizedName = normalizeComparableText(companyName || Cypress.expose('DAFATER_COMPANY_NAME') || '');
 
   const clickByDataName = (dataName) =>
     cy.get('a[data-doctype="Company"][data-name]:visible, a.link-itself[data-doctype="Company"][data-name]:visible', { timeout: LONG_TIMEOUT })
@@ -226,9 +226,9 @@ const rowMatchesAccountName = (rowText, accountName) => {
   const matchedTokens = tokens.filter((token) => normalizedRow.includes(token)).length;
   if (matchedTokens >= Math.min(3, tokens.length) && matchedTokens > 0) return true;
 
-  const accountLooksLikeNotBilled = /not\s*billed|received\s*but\s*not\s*billed|غير\s*مفوتر|غير\s*مفو/i.test(base);
+  const accountLooksLikeNotBilled = /not\s*billed|received\s*but\s*not\s*billed|???\s*?????|???\s*???/i.test(base);
   if (accountLooksLikeNotBilled) {
-    return /not\s*billed|received\s*but\s*not\s*billed|غير\s*مفوتر|غير\s*مفو/i.test(normalizedRow);
+    return /not\s*billed|received\s*but\s*not\s*billed|???\s*?????|???\s*???/i.test(normalizedRow);
   }
 
   return false;
@@ -372,7 +372,7 @@ const getGeneralLedgerValueByAccountAndColumn = ({
   });
 
 const getClosingValueForInvoiceAtGL = ({ colIndex, debugName }) => {
-  const closingPattern = /closing|الرصيد\s*الختامي|ختامي/i;
+  const closingPattern = /closing|??????\s*???????|?????/i;
 
   const resolveValue = (attempt = 0) =>
     cy.get('body', { timeout: LONG_TIMEOUT }).then(($body) => {
@@ -489,7 +489,7 @@ describe('PurchaseInvoicesTest (Migrated from Selenium)', () => {
       selectPurchaseInvoiceSupplier();
       selectPurchaseInvoiceItem(itemCode);
       submitPurchaseInvoice();
-      openCreateMenuAndChoose(['ارجاع', 'اشعار مدين', 'debit']);
+      openCreateMenuAndChoose(['?????', '????? ????', 'debit']);
       submitDebitNote();
       logDebitNoteIndicatorText();
     });
@@ -504,7 +504,7 @@ describe('PurchaseInvoicesTest (Migrated from Selenium)', () => {
       selectPurchaseInvoiceSupplier();
       selectPurchaseInvoiceItem(itemCode);
       submitPurchaseInvoice();
-      openCreateMenuAndChoose(['دفع', 'payment']);
+      openCreateMenuAndChoose(['???', 'payment']);
       saveAndSubmitPaymentDoc(Date.now());
       logPaymentIndicatorText();
     });
@@ -541,7 +541,7 @@ describe('PurchaseInvoicesTest (Migrated from Selenium)', () => {
         .then((beforeText) => {
           const purchaseReceiptStatusBefore = String(beforeText || '').replace(/\s+/g, ' ').trim();
 
-          openCreateMenuAndChoose(['فاتورة المشتريات', 'purchase invoice', 'invoice']);
+          openCreateMenuAndChoose(['?????? ?????????', 'purchase invoice', 'invoice']);
           submitPurchaseInvoiceWithoutUpdateStock();
 
           cy.get('@purchaseReceiptUrl').then((purchaseReceiptUrl) => {
@@ -573,7 +573,7 @@ describe('PurchaseInvoicesTest (Migrated from Selenium)', () => {
 
 
       openCompaniesListPage();
-      openSpecificCompanyWithoutScrollIntoView(Cypress.env('BusinessClouds (Demo)') || 'BusinessClouds (Demo)');
+      openSpecificCompanyWithoutScrollIntoView(Cypress.expose('DAFATER_COMPANY_NAME') || 'BusinessClouds (Demo)');
       getDefaultCreditAccount().as('defaultCreditAccountAtCompanySettings');
       getDefaultExpenseAccount().as('defaultExpenseAccountAtCompanySettings');
       getDefaultStockNotBilledAccount().as('defaultStockNotBilledAccountAtCompanySettings');
@@ -610,7 +610,7 @@ describe('PurchaseInvoicesTest (Migrated from Selenium)', () => {
       });
 
       openGeneralLedgerReport();
-      cy.get('body').should('contain.text', 'دفتر الأستاذ');
+      cy.get('body').should('contain.text', '???? ???????');
       scrollPageToGeneralLedgerTable();
 
       cy.get('@defaultCreditAccountAtCompanySettings').then((defaultCreditAccountAtCompanySettings) => {
@@ -706,3 +706,5 @@ describe('PurchaseInvoicesTest (Migrated from Selenium)', () => {
     });
   });
 });
+
+

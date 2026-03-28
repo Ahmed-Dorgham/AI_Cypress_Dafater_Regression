@@ -1,10 +1,10 @@
 /// <reference types="cypress" />
 import 'cypress-xpath';
-import { getMigrationEnv, getUiConfig, createItem, addItemPriceStandardSelling } from '../support/migrationHelpers';
+import { getMigrationEnv, getUiConfig, createItem, addItemPriceStandardSelling, clickFullScreenRequired } from '../support/migrationHelpers';
 
-const getSharedUiConfig = () => Cypress.env('uiConfig') || getUiConfig();
+const getSharedUiConfig = () => Cypress.expose('uiConfig') || getUiConfig();
 
-const ITEM_PRICE = Cypress.env('DAFATER_ITEM_PRICE') || '100'; 
+const ITEM_PRICE = Cypress.expose('DAFATER_ITEM_PRICE') || '100'; 
 const OVERLAY = '.freeze-message-container';
 const LONG_TIMEOUT = 20000;
 
@@ -88,8 +88,66 @@ describe('Adding Items Suite', () => {
     cy.get('#login_password, #pass', { timeout: 20000 }).type(getSharedUiConfig().creds.password, { force: true });
     cy.get('#login_btn').click();
     waitForOverlay();
-    cy.log('open items list from sidebar (as Selenium flow)');
- createPreparedItem();
+//     cy.log('open items list from sidebar (as Selenium flow)');
+//  createPreparedItem();
+
+    cy.log('open items list from sidebar');
+    openItemsListViaSidebar();
+    waitForOverlay();
+
+    cy.log('capture sales & purchase counts before');
+    getSalesItemsCount('salesBefore');
+    getPurchaseItemsCount('purchaseBefore');
+
+    cy.log('open new item form');
+    cy.get('[id="page-List/Item/List"]', { timeout: LONG_TIMEOUT }).should('exist')
+      .find('.btn.btn-default.btn-sm.primary-action.toolbar-btn')
+      .click({ force: true });
+ clickFullScreenRequired ();
+
+
+    cy.log('fill item code');
+    cy.xpath("(//input[contains(@data-fieldname,'item_code')])[1]", { timeout: LONG_TIMEOUT })
+      .should('be.visible')
+      .type(itemName, { force: true });
+
+    cy.log('select item group (first option)');
+    cy.xpath("(//*[contains(@id,'item_group')])[2]", { timeout: LONG_TIMEOUT })
+      .should('be.visible')
+      .click({ force: true });
+
+
+    cy.log('save sales item');
+    cy.get('[data-action_name="Save"]', { timeout: LONG_TIMEOUT }).should('not.be.disabled').click({ force: true });
+    cy.get('.indicator-pill.no-indicator-dot.whitespace-nowrap.blue', { timeout: LONG_TIMEOUT }).scrollIntoView().should('be.visible');
+
+    cy.log('verify created item name');
+    cy.get('.ellipsis.title-text', { timeout: LONG_TIMEOUT }).should('be.visible')
+      .eq(3)
+      .invoke('text')
+      .then((val) => expect(val.trim()).to.contain(itemName));
+
+    cy.log('back to items list and verify presence');
+    openItemsListViaSidebar();
+    waitForOverlay();
+    cy.contains('a[data-doctype="Item"]', itemName, { timeout: LONG_TIMEOUT }).should('be.visible');
+
+    cy.log('capture counts after');
+    getSalesItemsCount('salesAfter');
+    getPurchaseItemsCount('purchaseAfter');
+
+    cy.get('@salesBefore').then((before) => {
+      cy.get('@salesAfter').then((after) => {
+        expect(toInt(after)).to.be.greaterThan(toInt(before));
+      });
+    });
+
+    cy.get('@purchaseBefore').then((before) => {
+      cy.get('@purchaseAfter').then((after) => {
+        expect(toInt(after)).to.greaterThan(toInt(before));
+      });
+    });
+
     cy.wait(10000);
   });
 
@@ -116,10 +174,8 @@ describe('Adding Items Suite', () => {
     cy.get('[id="page-List/Item/List"]', { timeout: LONG_TIMEOUT }).should('exist')
       .find('.btn.btn-default.btn-sm.primary-action.toolbar-btn')
       .click({ force: true });
-    cy.get('.modal-dialog', { timeout: 180000 }).should('be.visible')
-      .find('.btn.btn-secondary.btn-sm').eq(0)
-      .should('not.be.disabled')
-      .click();
+ clickFullScreenRequired ();
+
 
     cy.log('fill item code');
     cy.xpath("(//input[contains(@data-fieldname,'item_code')])[1]", { timeout: LONG_TIMEOUT })
@@ -194,10 +250,8 @@ cy.get('#is_purchase_item').should('be.visible',{timeout:LONG_TIMEOUT}).click();
     cy.get('[id="page-List/Item/List"]', { timeout: LONG_TIMEOUT }).should('exist')
       .find('.btn.btn-default.btn-sm.primary-action.toolbar-btn')
       .click({ force: true });
-    cy.get('.modal-dialog', { timeout: 180000 }).should('be.visible')
-      .find('.btn.btn-secondary.btn-sm').eq(0)
-      .should('not.be.disabled')
-      .click();
+clickFullScreenRequired ();
+
 
     cy.log('fill item code');
     cy.xpath("(//input[contains(@data-fieldname,'item_code')])[1]", { timeout: LONG_TIMEOUT })
@@ -241,6 +295,9 @@ cy.get('#is_sales_item').should('be.visible',{timeout:LONG_TIMEOUT}).click();
     });
   });
 });
+
+
+
 
 
 

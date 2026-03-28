@@ -1,8 +1,10 @@
 const { defineConfig } = require('cypress');
 
 module.exports = defineConfig({
+  allowCypressEnv: false,
   e2e: {
     defaultCommandTimeout: 40000,
+    numTestsKeptInMemory: 0,
     pageLoadTimeout: 120000,
     video: false,
     supportFile: 'cypress/support/e2e.js',
@@ -12,12 +14,7 @@ module.exports = defineConfig({
     setupNodeEvents(on, config) {
       on('before:browser:launch', (browser = {}, launchOptions) => {
         if (browser.family === 'firefox') {
-          launchOptions.args.push('-safe-mode');
-          launchOptions.preferences['layers.acceleration.disabled'] = true;
-          launchOptions.preferences['gfx.webrender.enabled'] = false;
-          launchOptions.preferences['gfx.webrender.all'] = false;
-          launchOptions.preferences['gfx.webrender.force-disabled'] = true;
-          launchOptions.preferences['media.hardware-video-decoding.enabled'] = false;
+          launchOptions.preferences['network.proxy.type'] = 0;
         }
         return launchOptions;
       });
@@ -25,4 +22,7 @@ module.exports = defineConfig({
     },
   },
 });
+
+
+
 

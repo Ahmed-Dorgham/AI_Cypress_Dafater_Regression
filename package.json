@@ -13,10 +13,10 @@
     "cypress:verify": "set CYPRESS_VERIFY_TIMEOUT=120000&& set ELECTRON_RUN_AS_NODE=&& cypress verify"
   },
   "devDependencies": {
+    "cypress": "^15.13.0",
     "cypress-xpath": "^2.0.1"
   },
   "dependencies": {
-    "cypress": "^10.11.0",
     "open-editor": "^6.0.0"
   }
 }
