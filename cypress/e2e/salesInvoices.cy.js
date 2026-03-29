@@ -35,7 +35,7 @@ import {
   getSalesInvoiceNameFromUrl,
   getInvoiceNameInsideCreditNote,
   saveAndSubmitCreditNoteFromSalesInvoice,
-  openGeneralLedgerReportFromSalesInvoice,
+  openGeneralLedgerReport,
   waitForOverlay,
 } from '../support/migrationHelpers';
 
@@ -1036,7 +1036,7 @@ describe('SalesInvoicesTest (Migrated from Selenium)', () => {
         cy.log(`total amount of sales invoice is ${totalAmountForSalesInvoice}`);
       });
 
-      openGeneralLedgerReportFromSalesInvoice();
+      openGeneralLedgerReport();
       cy.get('body').should(($body) => {
         const pageText = String($body.text() || '');
         expect(
@@ -1123,6 +1123,7 @@ describe('SalesInvoicesTest (Migrated from Selenium)', () => {
     });
   });
 });
+
 
 
 

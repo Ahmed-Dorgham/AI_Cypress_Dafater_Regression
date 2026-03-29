@@ -445,6 +445,9 @@ export const openItemsList = () => {
   ensureSidebarVisible();
   clickFirstExisting(['#module-anchor-Stock'], 'Stock module');
   clickFirstExisting(['#sidebar-stock-item'], 'Items sidebar');
+
+
+  
   waitForOverlay();
 };
 
@@ -836,7 +839,14 @@ export const selectPurchaseReceiptItem = (itemCode) => {
           });
 
           if (matchingOpt) {
-            return cy.wrap(matchingOpt, { log: false }).click({ force: true });
+            return cy.wrap(matchingOpt, { log: false })
+              .scrollIntoView({ offset: { top: -120, left: 0 } })
+              .click({ force: true });
+          }
+
+          const lastVisibleOpt = opts[opts.length - 1];
+          if (lastVisibleOpt) {
+            cy.wrap(lastVisibleOpt, { log: false }).scrollIntoView({ offset: { top: -120, left: 0 } });
           }
 
           if (attempt >= 20) {
@@ -3687,88 +3697,8 @@ export const compareReportAcrossV4V5 = ({ reportSelectors }) => {
   });
 };
 
+
 export const openGeneralLedgerReport = () => {
-  waitForOverlay();
-
-  const viewBtnXpath = "(//*[normalize-space()='?????' and contains(@class, 'btn btn-default toolbar-btn')])[3]";
-  const generalLedgerPattern = /\u062f\u0641\u062a\u0631\s*\u0627\u0644(?:\u0627|\u0623)\u0633\u062a\u0627\u0630\s*\u0627\u0644\u0639\u0627\u0645|\u0645\u0648\u0627\u0632\u0646\u0629\s*\u062f\u0641\u062a\u0631\s*\u0627\u0644(?:\u0627|\u0623)\u0633\u062a\u0627\u0630|general\s*ledger/i;
-  const closeIconSelector = '.modal-dialog:visible .close:visible, .modal-dialog:visible [data-dismiss="modal"]:visible, .msgprint:visible .close:visible';
-  const blockerSelector = '.modal-dialog:visible, .msgprint:visible';
-  const blockerActionSelector = '.modal-dialog:visible button:visible, .modal-dialog:visible .btn:visible, .msgprint:visible button:visible, .msgprint:visible .btn:visible';
-
-  const dismissBlockingPopup = (attempt = 0) =>
-    cy.get('body', { timeout: LONG_TIMEOUT }).then(($body) => {
-      const hasBlocker = $body.find(blockerSelector).length > 0;
-      if (!hasBlocker) return;
-
-      const closeTarget = $body.find(closeIconSelector).toArray()[0];
-      if (closeTarget) {
-        return cy.wrap(closeTarget, { log: false })
-          .scrollIntoView({ offset: { top: -120, left: 0 } })
-          .click({ force: true })
-          .then(() => {
-            waitForOverlay();
-          })
-          .then(() => dismissBlockingPopup(attempt + 1));
-      }
-
-      const actionTarget = $body
-        .find(blockerActionSelector)
-        .toArray()
-        .find((el) => {
-          const txt = String(Cypress.$(el).text() || '').replace(/\s+/g, ' ').trim().toLowerCase();
-          return /\u0646\u0639\u0645|yes|ok|\u062d\u0633\u0646\u0627\u064b|\u0645\u0648\u0627\u0641\u0642|\u0627\u063a\u0644\u0627\u0642|close/.test(txt);
-        });
-
-      if (actionTarget) {
-        return cy.wrap(actionTarget, { log: false })
-          .scrollIntoView({ offset: { top: -120, left: 0 } })
-          .click({ force: true })
-          .then(() => {
-            waitForOverlay();
-          })
-          .then(() => dismissBlockingPopup(attempt + 1));
-      }
-
-      if (attempt >= 8) return;
-
-      return cy.get('body', { log: false })
-        .type('{esc}', { force: true })
-        .wait(200, { log: false })
-        .then(() => dismissBlockingPopup(attempt + 1));
-    });
-
-  const clickViewButton = () =>
-    cy.xpath(viewBtnXpath, { timeout: LONG_TIMEOUT })
-      .filter(':visible')
-      .first()
-      .scrollIntoView()
-      .should('be.visible')
-      .click({ force: true });
-
-  return cy
-    .then(() => dismissBlockingPopup())
-    .then(() => {
-      waitForOverlay();
-    })
-    .then(() => dismissBlockingPopup())
-    .then(() => {
-      waitForOverlay();
-    })
-    .then(() => clickViewButton())
-    .then(() =>
-      cy.contains('a:visible, button:visible, [role="menuitem"]:visible, .dropdown-item:visible', generalLedgerPattern, { timeout: LONG_TIMEOUT })
-        .first()
-        .scrollIntoView({ offset: { top: -120, left: 0 } })
-        .should('be.visible')
-        .click({ force: true })
-    )
-    .then(() => {
-      waitForOverlay();
-    });
-};
-
-export const openGeneralLedgerReportFromSalesInvoice = () => {
   waitForOverlay();
 
   const generalLedgerPattern = /\u062f\u0641\u062a\u0631\s*\u0627\u0644(?:\u0627|\u0623)\u0633\u062a\u0627\u0630\s*\u0627\u0644\u0639\u0627\u0645|\u0645\u0648\u0627\u0632\u0646\u0629\s*\u062f\u0641\u062a\u0631\s*\u0627\u0644(?:\u0627|\u0623)\u0633\u062a\u0627\u0630|general\s*ledger/i;
@@ -3845,7 +3775,7 @@ export const openGeneralLedgerReportFromSalesInvoice = () => {
           .scrollIntoView()
           .then(($viewBtns) => {
             if (!$viewBtns.length) {
-              throw new Error('No "?????" button found on Sales Invoice page');
+              throw new Error('No "?????" button found on  page');
             }
 
             const visibleViewBtn = $viewBtns.toArray().find((el) => Cypress.dom.isVisible(el));
@@ -3870,6 +3800,7 @@ export const openGeneralLedgerReportFromSalesInvoice = () => {
       waitForOverlay();
     });
 };
+
 
 
 

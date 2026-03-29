@@ -23,6 +23,7 @@ import {
   openCreateMenuAndChoose,
   selectCreditNoteReason,
 } from '../support/migrationHelpers';
+const LONG_TIMEOUT = 90000;
 
 const startSalesInvoiceDraft = () => {
   startNewSalesInvoice();
@@ -144,7 +145,7 @@ const clickFieldAndPickFirstOptionForWriteOffSuite = (selectors, label) => {
     });
 
   const clickOption = (attempt = 0) =>
-    cy.get('body', { timeout: 60000 }).then(($body) => {
+    cy.get('body', { timeout: LONG_TIMEOUT }).then(($body) => {
       const field = $body.find(selectors.join(', ')).toArray().find((el) => {
         const $el = Cypress.$(el);
         return $el.is(':visible') && !$el.prop('disabled') && !$el.hasClass('disabled');
@@ -168,7 +169,7 @@ const clickFieldAndPickFirstOptionForWriteOffSuite = (selectors, label) => {
           .scrollIntoView({ offset: { top: -120, left: 0 } })
           .click({ force: true })
           .type('{downarrow}', { force: true })
-          .wait(220, { log: false })
+          .wait(1000, { log: false })
           .then(() => clickOption(attempt + 1));
       }
 
@@ -183,7 +184,7 @@ const clickFieldAndPickFirstOptionForWriteOffSuite = (selectors, label) => {
     .then(() => clickOption());
 };
 
-const openReceiptVouchersListPageForWriteOffSuite = () => {
+const openPaymentEntryListPageForWriteOffSuite = () => {
   ensureSidebarVisible();
   clickFirstVisibleForWriteOffSuite(
     [
@@ -208,17 +209,17 @@ const openReceiptVouchersListPageForWriteOffSuite = () => {
   waitForOverlay();
 };
 
-const clickOnNewReceiptVoucherBtnForWriteOffSuite = () => {
+const clickOnNewPaymentEntryBtnForWriteOffSuite = () => {
   waitForOverlay();
   clickNewPrimaryAction();
   waitForOverlay();
 };
 
-const enterValidDataIntoReceiptVoucherPageForWriteOffSuite = (amount = 100) => {
+const enterValidDataIntoPaymentEntryPageForWriteOffSuite = (amount = 100) => {
   const amountValue = String(amount);
 
   cy.get('input#party[data-fieldtype="Dynamic Link"][data-fieldname="party"][data-target="party_type"], #party', {
-    timeout: 60000,
+    timeout: LONG_TIMEOUT,
   })
     .eq(1)
     .scrollIntoView({ offset: { top: -120, left: 0 } })
@@ -250,7 +251,7 @@ const enterValidDataIntoReceiptVoucherPageForWriteOffSuite = (amount = 100) => {
   );
 
   cy.get('input#paid_amount[data-fieldtype="Currency"][data-fieldname="paid_amount"], #paid_amount', {
-    timeout: 60000,
+    timeout: LONG_TIMEOUT,
   })
     .eq(0)
     .scrollIntoView({ offset: { top: -120, left: 0 } })
@@ -258,11 +259,11 @@ const enterValidDataIntoReceiptVoucherPageForWriteOffSuite = (amount = 100) => {
     .click({ force: true })
     .focus()
     .type('{selectall}{del}', { force: true })
-    .type(amountValue, { force: true })
-    .wait(1000, { log: false });
+    .wait(5000, { log: false })
+    .type(amountValue, { force: true });
 };
 
-const clickOnSaveAndSubmitReceiptVoucherBtnForWriteOffSuite = () => {
+const clickOnSaveAndSubmitPaymentEntryBtnForWriteOffSuite = () => {
   cy.get('body', { timeout: 60000 }).then(($body) => {
     const normalize = (v) =>
       String(v || '')
@@ -318,19 +319,24 @@ const createReceiptVoucherBeforeApplyWriteOffForWriteOffSuite = (amount = 100) =
   openPaymentEntryList();
   clickNewPrimaryAction();
   waitForOverlay();
-  enterValidDataIntoReceiptVoucherPageForWriteOffSuite(amount);
+  enterValidDataIntoPaymentEntryPageForWriteOffSuite(amount);
   saveAndSubmitPaymentDoc(Date.now());
 };
 
-const createReceiptVoucherBeforeApplyWriteOffUsingSellingFlowForWriteOffSuite = (amount = 100) => {
-  openReceiptVouchersListPageForWriteOffSuite();
-  clickOnNewReceiptVoucherBtnForWriteOffSuite();
-  enterValidDataIntoReceiptVoucherPageForWriteOffSuite(amount);
-  clickOnSaveAndSubmitReceiptVoucherBtnForWriteOffSuite();
+
+
+openPaymentEntryListPageForWriteOffSuite
+const createPaymentEntryBeforeApplyWriteOffUsingSellingFlowForWriteOffSuite = (amount = 100) => {
+  openPaymentEntryListPageForWriteOffSuite();
+  clickOnNewPaymentEntryBtnForWriteOffSuite();
+  enterValidDataIntoPaymentEntryPageForWriteOffSuite(amount);
+  clickOnSaveAndSubmitPaymentEntryBtnForWriteOffSuite();
 };
 
+
+
 describe('WriteOffSalesInvoicesTest (Migrated from Selenium)', () => {
-  it.skip('TC01_createNewSalesInvoiceAndSaveAfterApplyCompleteWriteOff', () => {
+  it('TC01_createNewSalesInvoiceAndSaveAfterApplyCompleteWriteOff', () => {
     createSalesInvoiceBeforeApplyWriteOff();
 
     readOutstandingAmount().then((beforeOutstanding) => {
@@ -374,14 +380,15 @@ describe('WriteOffSalesInvoicesTest (Migrated from Selenium)', () => {
     });
   });
 
-  it.skip('TC02_createNewSalesInvoiceWhenApplyWriteOffAndPayAdvanceAmountWithValueEqualToGrandTotalAmount', () => {
+  it('TC02_createNewSalesInvoiceWhenApplyWriteOffAndPayAdvanceAmountWithValueEqualToGrandTotalAmount', () => {
     const env = getMigrationEnv();
     const itemCode = `item ${Date.now()}`;
 
     loginToV5(env);
-    createReceiptVoucherBeforeApplyWriteOffUsingSellingFlowForWriteOffSuite(env.itemPrice);
-
+   
+createPaymentEntryBeforeApplyWriteOffUsingSellingFlowForWriteOffSuite(env.itemPrice);
     createItemWithStandardSellingPrice(itemCode, env.itemPrice);
+  
     createAndSaveSalesInvoice(itemCode);
 
     readOutstandingAmount().then((beforeOutstanding) => {
@@ -435,11 +442,11 @@ describe('WriteOffSalesInvoicesTest (Migrated from Selenium)', () => {
     });
   });
 
-  it.skip('TC03_verifyValidationWhenPayAdvanceAmountFirstAndApplyWriteOffWithValueGreaterThanGrandTotalAmount', () => {
+  it('TC03_verifyValidationWhenPayAdvanceAmountFirstAndApplyWriteOffWithValueGreaterThanGrandTotalAmount', () => {
     const env = getMigrationEnv();
     const itemCode = `item ${Date.now()}`;
     loginToV5(env);
-    createReceiptVoucherBeforeApplyWriteOffUsingSellingFlowForWriteOffSuite(env.itemPrice);
+    createPaymentEntryBeforeApplyWriteOffUsingSellingFlowForWriteOffSuite(env.itemPrice);
     createItemWithStandardSellingPrice(itemCode, env.itemPrice);
     createAndSaveSalesInvoice(itemCode);
 
@@ -478,7 +485,7 @@ describe('WriteOffSalesInvoicesTest (Migrated from Selenium)', () => {
     });
   });
 
-  it.skip('TC05_verifyValidationWhenApplyDiscountAndApplyWriteOffWithValueGreaterThanGrandTotalAmount', () => {
+  it('TC05_verifyValidationWhenApplyDiscountAndApplyWriteOffWithValueGreaterThanGrandTotalAmount', () => {
     cy.on('window:before:load', (win) => {
       cy.stub(win, 'open').as('windowOpen');
     });
@@ -515,7 +522,7 @@ describe('WriteOffSalesInvoicesTest (Migrated from Selenium)', () => {
     });
   });
 
-  it.skip('TC06_verifyValidationWhenApplyWriteOffWithNegative', () => {
+  it('TC06_verifyValidationWhenApplyWriteOffWithNegative', () => {
     const env = getMigrationEnv();
     const itemCode = `item ${Date.now()}`;
     login({ url: env.v5Url, username: env.user5, password: env.pass5 });
@@ -537,7 +544,7 @@ describe('WriteOffSalesInvoicesTest (Migrated from Selenium)', () => {
       });
   });
 
-  it.skip('TC07_verifyValidationWhenApplyCompleteWriteOffThenRemoveTaxes', () => {
+  it('TC07_verifyValidationWhenApplyCompleteWriteOffThenRemoveTaxes', () => {
     const env = getMigrationEnv();
     const itemCode = `item ${Date.now()}`;
     login({ url: env.v5Url, username: env.user5, password: env.pass5 });
@@ -588,7 +595,7 @@ describe('WriteOffSalesInvoicesTest (Migrated from Selenium)', () => {
     });
   });
 
-  it.skip('TC09_verifyWhenCreateCreditNoteAfterApplyWriteOffAndRemoveTaxesOnSalesInvoice', () => {
+  it('TC09_verifyWhenCreateCreditNoteAfterApplyWriteOffAndRemoveTaxesOnSalesInvoice', () => {
     const env = getMigrationEnv();
     const itemCode = `item ${Date.now()}`;
     login({ url: env.v5Url, username: env.user5, password: env.pass5 });

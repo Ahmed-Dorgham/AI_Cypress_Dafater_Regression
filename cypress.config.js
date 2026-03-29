@@ -8,6 +8,7 @@ module.exports = defineConfig({
     pageLoadTimeout: 120000,
     video: false,
     supportFile: 'cypress/support/e2e.js',
+    watchForFileChanges: false,
     env: {
       scope: process.env.DAFATER_SCOPE || 'Regression',
     },
