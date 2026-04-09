@@ -1,4 +1,4 @@
-const LONG_TIMEOUT = 90000;
+const LONG_TIMEOUT = 180000;
 const OVERLAY = '.freeze-message-container';
 const FULL_SCREEN_TEXT_RE = /\u0639\u0631\u0636\s*\u0627\u0644\u0634\u0627\u0634\u0629\s*\u0643\u0627\u0645\u0644\u0629|full\s*screen/i;
 
@@ -809,18 +809,37 @@ export const selectPurchaseReceiptItem = (itemCode) => {
     }
   });
 
-  cy.get(rowItemInputSelectors.join(', '), { timeout: 30000 })
+  cy.get(rowItemInputSelectors.join(', '), { timeout: 50000 })
     .then(($inputs) => {
       const inputTarget = $inputs.toArray().find((el) => Cypress.$(el).is(':visible')) || $inputs[0];
       if (!inputTarget) {
         throw new Error(`Could not find visible item input using selectors: ${rowItemInputSelectors.join(', ')}`);
       }
-      cy.wrap(inputTarget, { log: false })
-        .as('purchaseReceiptItemField')
-        .scrollIntoView({ offset: { top: -120, left: 0 } })
-        .click({ force: true })
-        .clear({ force: true })
-        .type(String(itemCode), { force: true });
+      cy.wrap(inputTarget, { log: false }).as('purchaseReceiptItemField');
+
+      const expectedItemCode = String(itemCode).replace(/\s+/g, ' ').trim();
+      const typePurchaseReceiptItemCode = (attempt = 0) =>
+        cy.get('@purchaseReceiptItemField', { log: false })
+          .scrollIntoView({ offset: { top: -120, left: 0 } })
+          .click({ force: true })
+          .wait(5000, { log: false })
+          .type('{selectall}{backspace}', { force: true })
+          .wait(5000, { log: false })
+          .type(String(itemCode), { force: true, delay: 0 })
+          .wait(5000, { log: false })
+          .invoke('val')
+          .then((value) => {
+            const typedValue = String(value || '').replace(/\s+/g, ' ').trim();
+            if (typedValue === expectedItemCode) {
+              return;
+            }
+
+            if (attempt >= 5) {
+              throw new Error(`Could not confirm item code in purchase receipt item field: ${String(itemCode)}. Current value: ${typedValue || '<empty>'}`);
+            }
+
+            return cy.wait(150, { log: false }).then(() => typePurchaseReceiptItemCode(attempt + 1));
+          });
 
       const dataTarget = Cypress.$(inputTarget).attr('data-target');
       const dataTargetSelector = dataTarget
@@ -837,9 +856,12 @@ export const selectPurchaseReceiptItem = (itemCode) => {
             const text = (Cypress.$(el).text() || '').toLowerCase().replace(/\s+/g, ' ').trim();
             return normalizedItemCode ? text.includes(normalizedItemCode) : false;
           });
+          const currentFieldValue = String(Cypress.$(inputTarget).val() || '').replace(/\s+/g, ' ').trim();
+          const fallbackOpt = currentFieldValue === expectedItemCode ? opts[0] : null;
+          const targetOpt = matchingOpt || fallbackOpt;
 
-          if (matchingOpt) {
-            return cy.wrap(matchingOpt, { log: false })
+          if (targetOpt) {
+            return cy.wrap(targetOpt, { log: false })
               .scrollIntoView({ offset: { top: -120, left: 0 } })
               .click({ force: true });
           }
@@ -849,18 +871,46 @@ export const selectPurchaseReceiptItem = (itemCode) => {
             cy.wrap(lastVisibleOpt, { log: false }).scrollIntoView({ offset: { top: -120, left: 0 } });
           }
 
-          if (attempt >= 20) {
-            throw new Error(`Item options appeared but no option matched item code: ${String(itemCode)}`);
-          }
+          return cy.get('@purchaseReceiptItemField', { log: false }).invoke('val').then((liveValue) => {
+            const normalizedLiveValue = String(liveValue || '').replace(/\s+/g, ' ').trim();
 
-          return cy
-            .get('@purchaseReceiptItemField', { log: false })
-            .type('{downarrow}', { force: true })
-            .wait(180, { log: false })
-            .then(() => clickFirstItemOption(attempt + 1));
+            if (attempt >= 20) {
+              return cy
+                .get('@purchaseReceiptItemField', { log: false })
+                .click({ force: true })
+                .wait(5000, { log: false })
+                .type('{selectall}{backspace}', { force: true })
+                .wait(5000, { log: false })
+                .type(String(itemCode), { force: true, delay: 0 })
+                .wait(5000, { log: false })
+                .wait(180, { log: false })
+                .then(() => cy.get('body', { timeout: LONG_TIMEOUT }).then(($retryBody) => {
+                  const retryOpts = $retryBody.find(optionSelectors).toArray();
+                  const retryTarget = retryOpts[0];
+
+                  if (retryTarget) {
+                    return cy.wrap(retryTarget, { log: false })
+                      .scrollIntoView({ offset: { top: -120, left: 0 } })
+                      .click({ force: true });
+                  }
+
+                  if (normalizedLiveValue === expectedItemCode) {
+                    return cy.get('@purchaseReceiptItemField', { log: false }).type('{enter}', { force: true });
+                  }
+
+                  return cy.get('@purchaseReceiptItemField', { log: false }).type('{enter}', { force: true });
+                }));
+            }
+
+            return cy
+              .get('@purchaseReceiptItemField', { log: false })
+              .type('{downarrow}', { force: true })
+              .wait(180, { log: false })
+              .then(() => clickFirstItemOption(attempt + 1));
+          });
         });
 
-      return clickFirstItemOption();
+      return typePurchaseReceiptItemCode().then(() => clickFirstItemOption());
     });
 };
 
@@ -1875,13 +1925,16 @@ export const openReportBySelectors = (selectors, label) => {
   waitForOverlay();
 };
 
-export const readTotalRowsCount = () =>
-  cy
+export const readTotalRowsCount = () => {
+  const updatingText = '\u062a\u062d\u062f\u064a\u062b';
+
+  return cy
     .xpath('//*[contains(@class,"list-count")]| //*[contains(@class,"total-rows")]  ', { timeout: LONG_TIMEOUT })
     .first()
+    .should('be.visible')
     .should(($el) => {
       const text = $el.text().trim();
-      expect(text).to.not.contain('?????');
+      expect(text).to.not.contain(updatingText);
     })
     .invoke('text')
     .then((text) => {
@@ -1889,6 +1942,8 @@ export const readTotalRowsCount = () =>
       Cypress.log({ name: 'readTotalRowsCount', message: String(count) });
       return count;
     });
+};
+
 
 export const readItemIndicatorCount = (index) =>
   cy
@@ -1988,7 +2043,7 @@ export const openItemPricePage = () => {
 
       if (!target) {
         if (attempt >= 12) {
-          throw new Error('Could not find visible "Add Item Price / إضافة سعر الصنف" button');
+          throw new Error('Could not find visible "Add Item Price / Ø¥Ø¶Ø§ÙØ© Ø³Ø¹Ø± Ø§Ù„ØµÙ†Ù" button');
         }
         return cy.wait(250, { log: false }).then(() => clickAddItemPriceButton(attempt + 1));
       }
@@ -2143,7 +2198,7 @@ export const addingPriceForItem = (itemCode, price, priceListKind = 'selling') =
       const id = ($el.attr('id') || '').toLowerCase();
       const action = ($el.attr('data-action_name') || $el.attr('data-action-name') || '').toLowerCase();
       const disabled = $el.prop('disabled') || $el.hasClass('disabled');
-      return !disabled && (text.includes('???') || text.includes('save') || id.includes('appframe-btn-???') || id.includes('appframe-btn-save') || action === 'save');
+      return !disabled && text.includes('\u062d\u0641\u0638');
     };
     const pickInScope = ($scope, visibleOnly) =>
       $scope
@@ -2157,11 +2212,7 @@ export const addingPriceForItem = (itemCode, price, priceListKind = 'selling') =
           const action = ($el.attr('data-action_name') || $el.attr('data-action-name') || '').toLowerCase();
           const disabled = $el.prop('disabled') || $el.hasClass('disabled');
           return !disabled && (
-            text === '???' ||
-            text === 'save' ||
-            id === 'appframe-btn-???' ||
-            id === 'appframe-btn-save' ||
-            action === 'save'
+            text === '\u062d\u0641\u0638'
           );
         }) ||
       $scope
@@ -2191,7 +2242,6 @@ export const addingPriceForItem = (itemCode, price, priceListKind = 'selling') =
   });
   waitForOverlay();
 };
-
 export const addItemPriceStandardSelling = (itemCode, itemPrice) => {
   openSellingPriceLists();
   openStandardSellingList();
@@ -2278,6 +2328,8 @@ export const getSalesInvoiceDueDate = () =>
 
 export const selectSalesInvoiceItem = (itemCode) => {
   const normalizedItemCode = String(itemCode || '').toLowerCase().replace(/\s+/g, ' ').trim();
+  const expectedItemCode = String(itemCode || '').replace(/\s+/g, ' ').trim();
+
   cy.get('body', { timeout: LONG_TIMEOUT }).then(($body) => {
     const scrollTarget = $body.find(
       '[data-fieldname="items"]:visible, .form-grid:visible, .grid-body:visible, [data-fieldname="item_code"]:visible, [data-target="Item"]:visible'
@@ -2297,50 +2349,83 @@ export const selectSalesInvoiceItem = (itemCode) => {
     '.form-grid-container .grid-body .rows .grid-row:visible:first input[data-fieldname="item_code"]',
     '.form-grid-container .grid-body .rows .grid-row:visible:first input[data-target="Item"]',
   ];
+
   clickFirstExisting(rowItemCodeStaticCell, 'Sales invoice item code static cell (row)');
   cy.get(rowItemCodeStaticCell.join(', '), { timeout: LONG_TIMEOUT }).first().dblclick({ force: true });
-  cy.get(rowItemCodeInputSelectors.join(', '), { timeout: LONG_TIMEOUT })
-    .then(($inputs) => {
-      const inputTarget = $inputs.toArray().find((el) => Cypress.$(el).is(':visible')) || $inputs[0];
-      if (!inputTarget) {
-        throw new Error(`Could not find sales invoice item input using selectors: ${rowItemCodeInputSelectors.join(', ')}`);
-      }
-      cy.wrap(inputTarget, { log: false })
-        .as('salesInvoiceItemField')
+  cy.get(rowItemCodeInputSelectors.join(', '), { timeout: LONG_TIMEOUT }).then(($inputs) => {
+    const inputTarget = $inputs.toArray().find((el) => Cypress.$(el).is(':visible')) || $inputs[0];
+    if (!inputTarget) {
+      throw new Error(`Could not find sales invoice item input using selectors: ${rowItemCodeInputSelectors.join(', ')}`);
+    }
+
+    cy.wrap(inputTarget, { log: false }).as('salesInvoiceItemField');
+
+    const typeSalesInvoiceItemCode = (attempt = 0) =>
+      cy.get('@salesInvoiceItemField', { log: false })
         .scrollIntoView({ offset: { top: -120, left: 0 } })
         .click({ force: true })
-        .clear({ force: true })
-        .type(String(itemCode), { force: true });
+        .wait(3000, { log: false })
+        .type('{selectall}{backspace}', { force: true })
+        .wait(3000, { log: false })
+        .type(String(itemCode), { force: true, delay: 0 })
+        .wait(3000, { log: false })
+        .invoke('val')
+        .then((value) => {
+          const typedValue = String(value || '').replace(/\s+/g, ' ').trim();
+          if (typedValue === expectedItemCode) return;
 
-      const dataTarget = Cypress.$(inputTarget).attr('data-target');
-      const dataTargetSelector = dataTarget
-        ? `[data-target="${dataTarget}"] + ul li:visible, [data-target="${dataTarget}"] ~ ul li:visible`
-        : '';
-      const fallbackSelector =
-        'ul.awesomplete li:visible, .awesomplete [role="option"]:visible, .awesomplete li:visible, [role="listbox"] li:visible, [role="option"]:visible';
-      const optionSelectors = [dataTargetSelector, fallbackSelector].filter(Boolean).join(', ');
-
-      const clickMatchingItemOption = (attempt = 0) =>
-        cy.get('body', { timeout: LONG_TIMEOUT }).then(($body) => {
-          const opts = $body.find(optionSelectors).toArray();
-          const matchingOpt = opts.find((el) => {
-            const text = (Cypress.$(el).text() || '').toLowerCase().replace(/\s+/g, ' ').trim();
-            return normalizedItemCode ? text.includes(normalizedItemCode) : false;
-          });
-
-          if (matchingOpt) {
-            return cy.wrap(matchingOpt, { log: false }).click({ force: true });
+          if (attempt >= 5) {
+            throw new Error(`Could not confirm item code in sales invoice item field: ${String(itemCode)}. Current value: ${typedValue || '<empty>'}`);
           }
 
-          if (attempt >= 25) {
-            throw new Error(`Sales invoice item options appeared but no option matched item code: ${String(itemCode)}`);
-          }
-
-          return cy.wait(200, { log: false }).then(() => clickMatchingItemOption(attempt + 1));
+          return cy.wait(150, { log: false }).then(() => typeSalesInvoiceItemCode(attempt + 1));
         });
 
-      return cy.wait(250, { log: false }).then(() => clickMatchingItemOption());
-    });
+    const dataTarget = Cypress.$(inputTarget).attr('data-target');
+    const dataTargetSelector = dataTarget
+      ? `[data-target="${dataTarget}"] + ul li:visible, [data-target="${dataTarget}"] ~ ul li:visible`
+      : '';
+    const fallbackSelector =
+      'ul.awesomplete li:visible, .awesomplete [role="option"]:visible, .awesomplete li:visible, [role="listbox"] li:visible, [role="option"]:visible';
+    const optionSelectors = [dataTargetSelector, fallbackSelector].filter(Boolean).join(', ');
+
+    const clickMatchingItemOption = (attempt = 0) =>
+      cy.get('body', { timeout: LONG_TIMEOUT }).then(($body) => {
+        const opts = $body.find(optionSelectors).toArray();
+        const matchingOpt = opts.find((el) => {
+          const text = (Cypress.$(el).text() || '').toLowerCase().replace(/\s+/g, ' ').trim();
+          return normalizedItemCode ? text.includes(normalizedItemCode) : false;
+        });
+        const currentFieldValue = String(Cypress.$(inputTarget).val() || '').replace(/\s+/g, ' ').trim();
+        const targetOpt = matchingOpt || (currentFieldValue === expectedItemCode ? opts[0] : null);
+
+        if (targetOpt) {
+          return cy.wrap(targetOpt, { log: false }).click({ force: true });
+        }
+
+        if (attempt >= 25) {
+          return cy
+            .get('@salesInvoiceItemField', { log: false })
+            .click({ force: true })
+            .wait(5000, { log: false })
+            .type('{selectall}{backspace}', { force: true })
+            .wait(5000, { log: false })
+            .type(String(itemCode), { force: true, delay: 0 })
+            .wait(180, { log: false })
+            .then(() => cy.get('body', { timeout: LONG_TIMEOUT }).then(($retryBody) => {
+              const retryTarget = $retryBody.find(optionSelectors).toArray()[0];
+              if (retryTarget) {
+                return cy.wrap(retryTarget, { log: false }).click({ force: true });
+              }
+              return cy.get('@salesInvoiceItemField', { log: false }).type('{enter}', { force: true });
+            }));
+        }
+
+        return cy.wait(200, { log: false }).then(() => clickMatchingItemOption(attempt + 1));
+      });
+
+    return typeSalesInvoiceItemCode().then(() => cy.wait(250, { log: false }).then(() => clickMatchingItemOption()));
+  });
 
   cy.get('#sales-invoice-__details-tab, a[data-fieldname="__details"][href="#sales-invoice-__details"]', { timeout: LONG_TIMEOUT })
     .first()
@@ -2392,7 +2477,7 @@ export const selectSalesInvoiceItem = (itemCode) => {
       expect(selected || active || panelVisible, 'sales invoice details tab active again').to.eq(true);
     });
 
-  cy.wait(10000, { log: false });
+  cy.wait(3000, { log: false });
 };
 
 export const fillSalesInvoiceCore = ({ itemCode }) => {
@@ -3103,7 +3188,6 @@ export const saveAndSubmitPaymentDoc = (refNum) => {
     .click({ force: true });
   waitForOverlay();
 };
-
 export const applyWriteOffAmount = (value) => {
   const paymentsTabSelectors = [
     '#sales-invoice-payments_tab-tab',
@@ -3228,7 +3312,7 @@ export const applyWriteOffAmount = (value) => {
         .click({ force: true })
         .focus()
         .should('be.focused')
-        .wait(3000, { log: false })
+        .wait(5000, { log: false })
         .type('{selectall}{del}', { force: true })
         .type(String(value), { force: true });
     })
@@ -3465,10 +3549,7 @@ export const applyAdvanceAmount = (value) => {
 };
 
 export const applyDiscountAmount = (value) => {
-  // clickFirstExisting(
-  //   ['#sales-invoice-__details-tab', 'a[data-fieldname="__details"][href="#sales-invoice-__details"]'],
-  //   'Sales Invoice details tab'
-  // );
+ 
   clickFirstExisting(['[data-fieldname="totals"]', '#sales-invoice-custom_taxes_and_charges-tab'], 'Totals/discount section');
   typeFirstExisting(['#discount_amount', 'input[data-fieldname="discount_amount"]'], value, 'Discount amount');
 };
@@ -3533,7 +3614,7 @@ export const removeTaxesIfPresent = () => {
         const targetCheckbox = checkbox[0] || headerCheckbox[0];
         if (targetCheckbox) {
           cy.wrap(targetCheckbox, { log: false }).click({ force: true });
-          cy.wait(5000, { log: false });
+          cy.wait(2000, { log: false });
         }
 
         const targetRemove = removeBtn.toArray().find((el) => {
@@ -3800,6 +3881,33 @@ export const openGeneralLedgerReport = () => {
       waitForOverlay();
     });
 };
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 

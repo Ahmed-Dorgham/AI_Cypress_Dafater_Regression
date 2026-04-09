@@ -1,4 +1,4 @@
-﻿/// <reference types="cypress" />
+/// <reference types="cypress" />
 
 import {
   getMigrationEnv,
@@ -56,12 +56,13 @@ const createAndSaveSalesInvoice = (itemCode) => {
   createDraftInvoice(itemCode);
 };
 
-const createSalesInvoiceBeforeApplyWriteOff = () => {
-  const env = getMigrationEnv();
+const createPreparedItem = (env = getMigrationEnv()) => {
   const itemCode = `item ${Date.now()}`;
-
-  loginToV5(env);
   createItemWithStandardSellingPrice(itemCode, env.itemPrice);
+  return cy.wrap(itemCode);
+};
+
+const createSalesInvoiceBeforeApplyWriteOff = (itemCode) => {
   createAndSaveSalesInvoice(itemCode);
 };
 
@@ -295,7 +296,7 @@ const clickOnSaveAndSubmitPaymentEntryBtnForWriteOffSuite = () => {
       });
 
     if (!target) {
-      throw new Error('Could not find visible "Ø­ÙØ¸ ÙˆØ§Ø¹ØªÙ…Ø§Ø¯ / Submit" button by text');
+      throw new Error('Could not find visible "حفظ واعتماد / Submit" button by text');
     }
 
     cy.wrap(target, { log: false })
@@ -336,8 +337,21 @@ const createPaymentEntryBeforeApplyWriteOffUsingSellingFlowForWriteOffSuite = (a
 
 
 describe('WriteOffSalesInvoicesTest (Migrated from Selenium)', () => {
+  let preparedItemCode;
+
+  beforeEach(() => {
+    const env = getMigrationEnv();
+    loginToV5(env);
+
+    if (preparedItemCode) return;
+
+    createPreparedItem(env).then((itemCode) => {
+      preparedItemCode = itemCode;
+    });
+  });
+
   it('TC01_createNewSalesInvoiceAndSaveAfterApplyCompleteWriteOff', () => {
-    createSalesInvoiceBeforeApplyWriteOff();
+    createSalesInvoiceBeforeApplyWriteOff(preparedItemCode);
 
     readOutstandingAmount().then((beforeOutstanding) => {
       const totalOutstandingAmountValueBeforeApplyWriteOff = String(beforeOutstanding).trim();
@@ -382,14 +396,9 @@ describe('WriteOffSalesInvoicesTest (Migrated from Selenium)', () => {
 
   it('TC02_createNewSalesInvoiceWhenApplyWriteOffAndPayAdvanceAmountWithValueEqualToGrandTotalAmount', () => {
     const env = getMigrationEnv();
-    const itemCode = `item ${Date.now()}`;
 
-    loginToV5(env);
-   
-createPaymentEntryBeforeApplyWriteOffUsingSellingFlowForWriteOffSuite(env.itemPrice);
-    createItemWithStandardSellingPrice(itemCode, env.itemPrice);
-  
-    createAndSaveSalesInvoice(itemCode);
+    createPaymentEntryBeforeApplyWriteOffUsingSellingFlowForWriteOffSuite(env.itemPrice);
+    createAndSaveSalesInvoice(preparedItemCode);
 
     readOutstandingAmount().then((beforeOutstanding) => {
       const totalOutstandingAmountValueBeforeApplyWriteOff = String(beforeOutstanding).trim();
@@ -444,11 +453,8 @@ createPaymentEntryBeforeApplyWriteOffUsingSellingFlowForWriteOffSuite(env.itemPr
 
   it('TC03_verifyValidationWhenPayAdvanceAmountFirstAndApplyWriteOffWithValueGreaterThanGrandTotalAmount', () => {
     const env = getMigrationEnv();
-    const itemCode = `item ${Date.now()}`;
-    loginToV5(env);
     createPaymentEntryBeforeApplyWriteOffUsingSellingFlowForWriteOffSuite(env.itemPrice);
-    createItemWithStandardSellingPrice(itemCode, env.itemPrice);
-    createAndSaveSalesInvoice(itemCode);
+    createAndSaveSalesInvoice(preparedItemCode);
 
     readOutstandingAmount().then((beforeOutstanding) => {
       const totalAmountValueBeforeApplyWriteOff = Number(beforeOutstanding);
@@ -457,10 +463,6 @@ createPaymentEntryBeforeApplyWriteOffUsingSellingFlowForWriteOffSuite(env.itemPr
 
       cy.log(`total outstanding amount value before apply complete write off is ${totalOutstandingAmountValueBeforeApplyWriteOff}`);
       // eslint-disable-next-line no-console
-      console.log(
-        'total outstanding amount value before apply complete write off is',
-        totalOutstandingAmountValueBeforeApplyWriteOff
-      );
 
       applyAdvanceAmount(totalAmountValueBeforeApplyWriteOff);
       applyWriteOffAmount(writeOffAmount);
@@ -471,10 +473,7 @@ createPaymentEntryBeforeApplyWriteOffUsingSellingFlowForWriteOffSuite(env.itemPr
         .invoke('text')
         .then((validationMsgText) => {
           const validationMsg = String(validationMsgText || '').replace(/\s+/g, ' ').trim();
-
-          cy.log(`Validation message after TC03: ${validationMsg}`);
-          // eslint-disable-next-line no-console
-          console.log(
+          cy.log(
             'Validation Msg after Pay Advance Amount First And Apply Write Off Greater Than Grand Total Amount is',
             validationMsg
           );
@@ -490,11 +489,7 @@ createPaymentEntryBeforeApplyWriteOffUsingSellingFlowForWriteOffSuite(env.itemPr
       cy.stub(win, 'open').as('windowOpen');
     });
 
-    const env = getMigrationEnv();
-    const itemCode = `item ${Date.now()}`;
-    loginToV5(env);
-    createItemWithStandardSellingPrice(itemCode, env.itemPrice);
-    createAndSaveSalesInvoice(itemCode);
+    createAndSaveSalesInvoice(preparedItemCode);
 
     readOutstandingAmount().then((beforeOutstanding) => {
       const totalAmountValueBeforeApplyWriteOff = Number(beforeOutstanding);
@@ -523,12 +518,7 @@ createPaymentEntryBeforeApplyWriteOffUsingSellingFlowForWriteOffSuite(env.itemPr
   });
 
   it('TC06_verifyValidationWhenApplyWriteOffWithNegative', () => {
-    const env = getMigrationEnv();
-    const itemCode = `item ${Date.now()}`;
-    login({ url: env.v5Url, username: env.user5, password: env.pass5 });
-    createItem(itemCode);
-    addItemPriceStandardSelling(itemCode, env.itemPrice);
-    createDraftInvoice(itemCode);
+    createDraftInvoice(preparedItemCode);
 
     applyWriteOffAmount(-100);
     // saveSalesInvoice();
@@ -545,12 +535,7 @@ createPaymentEntryBeforeApplyWriteOffUsingSellingFlowForWriteOffSuite(env.itemPr
   });
 
   it('TC07_verifyValidationWhenApplyCompleteWriteOffThenRemoveTaxes', () => {
-    const env = getMigrationEnv();
-    const itemCode = `item ${Date.now()}`;
-    login({ url: env.v5Url, username: env.user5, password: env.pass5 });
-    createItem(itemCode);
-    addItemPriceStandardSelling(itemCode, env.itemPrice);
-    createDraftInvoice(itemCode);
+    createDraftInvoice(preparedItemCode);
 
     readOutstandingAmount().then((beforeOutstanding) => {
       applyWriteOffAmountNoWait(beforeOutstanding);
@@ -570,12 +555,7 @@ createPaymentEntryBeforeApplyWriteOffUsingSellingFlowForWriteOffSuite(env.itemPr
   });
 
   it('TC08_verifyValidationWhenApplyCompleteWriteOffAndDiscountThenRemoveTaxes', () => {
-    const env = getMigrationEnv();
-    const itemCode = `item ${Date.now()}`;
-    login({ url: env.v5Url, username: env.user5, password: env.pass5 });
-    createItem(itemCode);
-    addItemPriceStandardSelling(itemCode, env.itemPrice);
-    createDraftInvoice(itemCode);
+    createDraftInvoice(preparedItemCode);
 
     readOutstandingAmount().then((beforeOutstanding) => {
       applyDiscountAmount(beforeOutstanding / 2);
@@ -596,18 +576,13 @@ createPaymentEntryBeforeApplyWriteOffUsingSellingFlowForWriteOffSuite(env.itemPr
   });
 
   it('TC09_verifyWhenCreateCreditNoteAfterApplyWriteOffAndRemoveTaxesOnSalesInvoice', () => {
-    const env = getMigrationEnv();
-    const itemCode = `item ${Date.now()}`;
-    login({ url: env.v5Url, username: env.user5, password: env.pass5 });
-    createItem(itemCode);
-    addItemPriceStandardSelling(itemCode, env.itemPrice);
-    createDraftInvoice(itemCode);
+    createDraftInvoice(preparedItemCode);
 
     readOutstandingAmount().then((beforeOutstanding) => {
       applyWriteOffAmount(beforeOutstanding / 2);
       removeTaxesIfPresent();
             submitSalesInvoice();
-      openCreateMenuAndChoose(['مرتجع / اشعار دائن', 'credit']);
+   openCreateMenuAndChoose(['مرتجع / اشعار دائن', 'credit']);
       selectCreditNoteReason();
   
       submitSalesInvoice();
@@ -619,8 +594,10 @@ createPaymentEntryBeforeApplyWriteOffUsingSellingFlowForWriteOffSuite(env.itemPr
           cy.log(`Credit Note status value: ${actualStatus}`);
           // eslint-disable-next-line no-console
           console.log('Credit Note status value:', actualStatus);
-          expect(actualStatus).to.eq('معتمد');
+         expect(actualStatus).to.eq('معتمد')
         });
     });
   });
 });
+
+

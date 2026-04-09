@@ -42,6 +42,21 @@ const buildMigrationEnv = (rawEnv = {}) => ({
   itemPrice: rawEnv.DAFATER_ITEM_PRICE || '100',
 });
 
+
+const resolveLoginUrl = (rawEnv = {}) => {
+  const migrationEnv = buildMigrationEnv(rawEnv);
+  const explicitLoginUrl =
+    rawEnv.DAFATER_V5_URL ||
+    rawEnv.DAFATER_BASE_URL ||
+    Cypress.config('baseUrl') ||
+    migrationEnv.v5Url;
+
+  if (/#login\b/i.test(String(explicitLoginUrl))) {
+    return String(explicitLoginUrl);
+  }
+
+  return `${normalizeBaseUrl(explicitLoginUrl)}/#login`;
+};
 export const getUiConfig = () => Cypress.expose('uiConfig');
 export const getMigrationEnv = () => Cypress.expose('migrationEnv');
 
@@ -173,6 +188,7 @@ beforeEach(() => {
       rawEnv.DAFATER_V5_URL ||
       uiConfig.rawBase;
     const baseUrl = normalizeBaseUrl(rawBaseUrl);
+    const loginUrl = resolveLoginUrl(rawEnv);
     const exposedEnv = {
       ...rawEnv,
       uiConfig: {
@@ -192,7 +208,7 @@ beforeEach(() => {
     clearBrowserState();
 
     cy.log('open login');
-    cy.visit(`${baseUrl}/#login`, {
+    cy.visit(loginUrl, {
       onBeforeLoad(win) {
         try {
           win.localStorage.clear();

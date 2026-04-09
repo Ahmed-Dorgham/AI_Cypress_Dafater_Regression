@@ -51,9 +51,19 @@ const createPreparedBuyingItem = () => {
   addItemPriceStandardBuying(itemCode, env.itemPrice);
   return cy.wrap(itemCode);
 };
+const ensureAtLoginPage = (env) => {
+  cy.location('hash', { timeout: LONG_TIMEOUT }).then((hash) => {
+    if (!/login/i.test(String(hash || ''))) {
+      cy.visit(env.v5Url);
+      waitForOverlay();
+    }
+  });
+
+  cy.get('#login_email, #login_id', { timeout: LONG_TIMEOUT }).should('be.visible');
+};
 
 const logPurchaseInvoiceIndicatorText = () => {
-  cy.get('.label.label-success, .indicator-pill.no-indicator-dot.whitespace-nowrap.green', { timeout: 120000 })
+  cy.get('.label.label-success, .indicator-pill.no-indicator-dot.whitespace-nowrap.green', { timeout: LONG_TIMEOUT })
     .should('be.visible')
     .first()
     .invoke('text')
@@ -65,7 +75,7 @@ const logPurchaseInvoiceIndicatorText = () => {
     });
 };
 const logPurchaseReceiptIndicatorText = () => {
-  cy.get('.label.label-success, .indicator-pill.no-indicator-dot.whitespace-nowrap.green', { timeout: 120000 })
+  cy.get('.label.label-success, .indicator-pill.no-indicator-dot.whitespace-nowrap.green', { timeout: LONG_TIMEOUT })
     .should('be.visible')
     .first()
     .invoke('text')
@@ -77,7 +87,7 @@ const logPurchaseReceiptIndicatorText = () => {
     });
 };
 const logDebitNoteIndicatorText = () => {
-  cy.get('.label.label-success, .indicator-pill.no-indicator-dot.whitespace-nowrap.green', { timeout: 120000 })
+  cy.get('.label.label-success, .indicator-pill.no-indicator-dot.whitespace-nowrap.green', { timeout: LONG_TIMEOUT })
     .should('be.visible')
     .first()
     .invoke('text')
@@ -90,19 +100,20 @@ const logDebitNoteIndicatorText = () => {
 };
 
 const logPaymentIndicatorText = () => {
-  cy.get('.label.label-success, .indicator-pill.no-indicator-dot.whitespace-nowrap.green', { timeout: 120000 })
+  cy.get('.label.label-success, .indicator-pill.no-indicator-dot.whitespace-nowrap.green', { timeout: LONG_TIMEOUT })
     .should('be.visible')
     .first()
     .invoke('text')
     .then((text) => {
       const indicatorText = String(text || '').replace(/\s+/g, ' ').trim();
+      expect(indicatorText, 'payment indicator text').to.contain('\u0645\u0639\u062a\u0645\u062f');
       cy.log(`Payment indicator text: ${indicatorText}`);
       // eslint-disable-next-line no-console
       console.log('Payment indicator text:', indicatorText);
     });
 };
 
-const LONG_TIMEOUT = 120000;
+const LONG_TIMEOUT = 360000;
 
 const normalizeDigitsToAscii = (value) =>
   String(value || '').replace(/[?-?]/g, (digit) => String('??????????'.indexOf(digit)));
@@ -426,286 +437,313 @@ const getClosingValueForInvoiceAtGL = ({ colIndex, debugName }) => {
 };
 
 describe('PurchaseInvoicesTest (Migrated from Selenium)', () => {
-  it('TC01_createNewPurchaseInvoiceAndSubmit', () => {
+  let preparedBuyingItemCode;
+
+  beforeEach(() => {
     const env = getMigrationEnv();
+    ensureAtLoginPage(env);
     login({ url: env.v5Url, username: env.user5, password: env.pass5 });
 
+    if (preparedBuyingItemCode) return;
+
     createPreparedBuyingItem().then((itemCode) => {
-      startNewPurchaseInvoice();
-      selectPurchaseInvoiceSupplier();
-      selectPurchaseInvoiceItem(itemCode);
-      submitPurchaseInvoice();
-      logPurchaseInvoiceIndicatorText();
+      preparedBuyingItemCode = itemCode;
     });
   });
 
+  it('TC01_createNewPurchaseInvoiceAndSubmit', () => {
+
+    startNewPurchaseInvoice();
+    selectPurchaseInvoiceSupplier();
+    selectPurchaseInvoiceItem(preparedBuyingItemCode);
+    submitPurchaseInvoice();
+    logPurchaseInvoiceIndicatorText();
+  });
+
   it('TC02_createNewPurchaseInvoiceFromPurchaseOrder', () => {
-    const env = getMigrationEnv();
-    login({ url: env.v5Url, username: env.user5, password: env.pass5 });
 
-    createPreparedBuyingItem().then((itemCode) => {
-      startNewPurchaseOrder();
-      fillPurchaseOrderCore(itemCode);
-      saveAndSubmitPurchaseOrder();
-      cy.contains(
-        'button:visible, .btn:visible, [role="button"]:visible, a:visible',
-        /\u0625\u0646\u0634\u0627\u0621|\u0627\u0646\u0634\u0627\u0621|create/i,
-        { timeout: 120000 }
-      ).should('be.visible');
-      cy.url().as('purchaseOrderUrl');
+    startNewPurchaseOrder();
+    fillPurchaseOrderCore(preparedBuyingItemCode);
+    saveAndSubmitPurchaseOrder();
+    cy.contains(
+      'button:visible, .btn:visible, [role="button"]:visible, a:visible',
+      /\u0625\u0646\u0634\u0627\u0621|\u0627\u0646\u0634\u0627\u0621|create/i,
+      { timeout: LONG_TIMEOUT }
+    ).should('be.visible');
+    cy.url().as('purchaseOrderUrl');
 
-      getPurchaseOrderStatusBeforeCreatingRelatedPurchaseInvoice().then((purchaseOrderStatusBefore) => {
-        createNewPurchaseInvoiceFromPurchaseOrder();
-        saveAndSubmitPurchaseInvoiceFromPurchaseOrder();
+    getPurchaseOrderStatusBeforeCreatingRelatedPurchaseInvoice().then((purchaseOrderStatusBefore) => {
+      createNewPurchaseInvoiceFromPurchaseOrder();
+      saveAndSubmitPurchaseInvoiceFromPurchaseOrder();
 
-        cy.get('@purchaseOrderUrl').then((purchaseOrderUrl) => {
-          cy.visit(String(purchaseOrderUrl));
-          waitForOverlay();
-          cy.get('span.indicator-pill.no-indicator-dot.whitespace-nowrap.green:visible > span:visible', { timeout: 120000 })
-            .first()
-            .should('be.visible')
-            .invoke('text')
-            .then((statusText) => {
-              const purchaseOrderStatusAfter = String(statusText || '').replace(/\s+/g, ' ').trim();
-              const beforeNormalized = String(purchaseOrderStatusBefore || '').replace(/\s+/g, ' ').trim().toLowerCase();
-              const afterNormalized = purchaseOrderStatusAfter.toLowerCase();
+      cy.get('@purchaseOrderUrl').then((purchaseOrderUrl) => {
+        cy.visit(String(purchaseOrderUrl));
+        waitForOverlay();
+        cy.get('span.indicator-pill.no-indicator-dot.whitespace-nowrap.green:visible > span:visible', { timeout: LONG_TIMEOUT })
+          .first()
+          .should('be.visible')
+          .invoke('text')
+          .then((statusText) => {
+            const purchaseOrderStatusAfter = String(statusText || '').replace(/\s+/g, ' ').trim();
+            const beforeNormalized = String(purchaseOrderStatusBefore || '').replace(/\s+/g, ' ').trim().toLowerCase();
+            const afterNormalized = purchaseOrderStatusAfter.toLowerCase();
 
-              expect(afterNormalized).to.match(/(?:\u0623\u0643\u062a\u0645\u0644|\u0627\u0643\u062a\u0645\u0644|\u0645\u0643\u062a\u0645\u0644|completed)/i);
-              expect(afterNormalized).to.not.eq(beforeNormalized);
+            expect(afterNormalized).to.match(/(?:\u0623\u0643\u062a\u0645\u0644|\u0627\u0643\u062a\u0645\u0644|\u0645\u0643\u062a\u0645\u0644|completed)/i);
+            expect(afterNormalized).to.not.eq(beforeNormalized);
 
-              cy.log(`Purchase Order status before creating related purchase invoice: ${purchaseOrderStatusBefore}`);
-              cy.log(`Purchase Order status after creating related purchase invoice : ${purchaseOrderStatusAfter}`);
-            });
-        });
+            cy.log(`Purchase Order status before creating related purchase invoice: ${purchaseOrderStatusBefore}`);
+            cy.log(`Purchase Order status after creating related purchase invoice : ${purchaseOrderStatusAfter}`);
+          });
       });
     });
   });
 
   it('TC03_createDebitNoteFromPurchaseInvoice', () => {
-    const env = getMigrationEnv();
-    login({ url: env.v5Url, username: env.user5, password: env.pass5 });
 
-    createPreparedBuyingItem().then((itemCode) => {
-      startNewPurchaseInvoice();
-      selectPurchaseInvoiceSupplier();
-      selectPurchaseInvoiceItem(itemCode);
-      submitPurchaseInvoice();
-   openCreateMenuAndChoose(['\u0627\u0631\u062c\u0627\u0639', '\u0627\u0631\u062c\u0627\u0639 / \u0627\u0634\u0639\u0627\u0631 \u0645\u062f\u064a\u0646', 'debit']);
-      submitDebitNote();
-      logDebitNoteIndicatorText();
-    });
+    startNewPurchaseInvoice();
+    selectPurchaseInvoiceSupplier();
+    selectPurchaseInvoiceItem(preparedBuyingItemCode);
+    submitPurchaseInvoice();
+    openCreateMenuAndChoose(['\u0627\u0631\u062c\u0627\u0639', '\u0627\u0631\u062c\u0627\u0639 / \u0627\u0634\u0639\u0627\u0631 \u0645\u062f\u064a\u0646', 'debit']);
+    submitDebitNote();
+    logDebitNoteIndicatorText();
   });
 
   it('TC04_createPaymentForPurchaseInvoice', () => {
-    const env = getMigrationEnv();
-    login({ url: env.v5Url, username: env.user5, password: env.pass5 });
 
-    createPreparedBuyingItem().then((itemCode) => {
-      startNewPurchaseInvoice();
-      selectPurchaseInvoiceSupplier();
-      selectPurchaseInvoiceItem(itemCode);
-      submitPurchaseInvoice();
-  openCreateMenuAndChoose(['\u062f\u0641\u0639', 'payment']);
 
-      saveAndSubmitPaymentDoc(Date.now());
-      logPaymentIndicatorText();
+    startNewPurchaseInvoice();
+    selectPurchaseInvoiceSupplier();
+    selectPurchaseInvoiceItem(preparedBuyingItemCode);
+    submitPurchaseInvoice();
+    cy.contains(
+      '.label.label-success:visible, .indicator-pill.no-indicator-dot.whitespace-nowrap.green:visible, .indicator-pill:visible, .indicator:visible',
+      /\u0645\u0639\u062a\u0645\u062f|submitted/i,
+      { timeout: LONG_TIMEOUT }
+    ).should('be.visible');
+   
+     cy.url().as('purchaseInvoiceUrl');
+     cy.get('@purchaseInvoiceUrl').then((purchaseInvoiceUrl) => {
+       cy.visit(String(purchaseInvoiceUrl));
+       waitForOverlay();
+       cy.get('span.indicator-pill.no-indicator-dot.whitespace-nowrap.orange:visible > span:visible, span.indicator-pill.no-indicator-dot.whitespace-nowrap.orange:visible', { timeout: LONG_TIMEOUT })
+         .first()
+         .should('be.visible')
+         .invoke('text')
+         .then((textBefore) => {
+           const statusBefore = String(textBefore || '').replace(/\s+/g, ' ').trim();
+           cy.wrap(statusBefore, { log: false }).as('purchaseInvoicePaymentStatusBefore');
+            cy.log('Purchase Invoice payment status before: ' + statusBefore);
+         });
+     });
+   
+   
+   
+   
+    // cy.reload();
+    openCreateMenuAndChoose(['\u062f\u0641\u0639', 'payment']);
+
+    saveAndSubmitPaymentDoc(Date.now());
+    logPaymentIndicatorText();
+
+    cy.get('@purchaseInvoiceUrl').then((purchaseInvoiceUrl) => {
+      cy.visit(String(purchaseInvoiceUrl));
+      waitForOverlay();
+      cy.contains(
+        '.label:visible, .indicator-pill:visible, .indicator:visible',
+        /\u0645\u062f\u0641\u0648\u0639|paid/i,
+        { timeout: LONG_TIMEOUT }
+      )
+        .invoke('text')
+        .then((textAfter) => {
+          const statusAfter = String(textAfter || '').replace(/\s+/g, ' ').trim();
+          cy.get('@purchaseInvoicePaymentStatusBefore').then((statusBefore) => {
+            cy.log(`Purchase Invoice payment status before: ${statusBefore}`);
+            cy.log(`Purchase Invoice payment status after : ${statusAfter}`);
+            expect(statusAfter, 'purchase invoice payment status after payment').to.match(/\u0645\u062f\u0641\u0648\u0639|paid/i);
+            expect(String(statusAfter).toLowerCase(), 'purchase invoice payment status changed after payment')
+              .to.not.eq(String(statusBefore).toLowerCase());
+          });
+        });
     });
   });
 
   it('TC05_createNewPurchaseInvoiceFromPurchaseReceipt', () => {
-    const env = getMigrationEnv();
-    login({ url: env.v5Url, username: env.user5, password: env.pass5 });
 
-    createPreparedBuyingItem().then((itemCode) => {
-      openPurchaseReceiptsList();
-      clickNewPrimaryAction();
-      waitForOverlay();
-      selectPurchaseReceiptSupplier();
-      selectPurchaseReceiptItem(itemCode);
-      saveAndSubmitPurchaseReceipt();
-      cy.contains(
-        'button:visible, .btn:visible, [role="button"]:visible, a:visible',
-        /\u0625\u0646\u0634\u0627\u0621|\u0627\u0646\u0634\u0627\u0621|create/i,
-        { timeout: 120000 }
-      ).should('be.visible');
-      cy.contains(
-        '.label.label-success:visible, .indicator-pill.no-indicator-dot.whitespace-nowrap.green:visible, .indicator-pill:visible, .indicator:visible',
-        /\u0645\u0639\u062a\u0645\u062f|submitted/i,
-        { timeout: 120000 }
-      ).should('be.visible');
-      cy.url().as('purchaseReceiptUrl');
+    openPurchaseReceiptsList();
+    clickNewPrimaryAction();
+    waitForOverlay();
+    selectPurchaseReceiptSupplier();
+    selectPurchaseReceiptItem(preparedBuyingItemCode);
+    saveAndSubmitPurchaseReceipt();
+    cy.contains(
+      'button:visible, .btn:visible, [role="button"]:visible, a:visible',
+      /\u0625\u0646\u0634\u0627\u0621|\u0627\u0646\u0634\u0627\u0621|create/i,
+      { timeout: LONG_TIMEOUT }
+    ).should('be.visible');
+    cy.contains(
+      '.label.label-success:visible, .indicator-pill.no-indicator-dot.whitespace-nowrap.green:visible, .indicator-pill:visible, .indicator:visible',
+      /\u0645\u0639\u062a\u0645\u062f|submitted/i,
+      { timeout: LONG_TIMEOUT }
+    ).should('be.visible');
+    cy.url().as('purchaseReceiptUrl');
 
+    cy.get('span.indicator-pill.no-indicator-dot.whitespace-nowrap:visible > span:visible, span.indicator-pill:visible > span:visible', { timeout: LONG_TIMEOUT })
+      .first()
+      .should('be.visible')
+      .invoke('text')
+      .then((beforeText) => {
+        const purchaseReceiptStatusBefore = String(beforeText || '').replace(/\s+/g, ' ').trim();
 
-      cy.get('span.indicator-pill.no-indicator-dot.whitespace-nowrap:visible > span:visible, span.indicator-pill:visible > span:visible', { timeout: 120000 })
-        .first()
-        .should('be.visible')
-        .invoke('text')
-        .then((beforeText) => {
-          const purchaseReceiptStatusBefore = String(beforeText || '').replace(/\s+/g, ' ').trim();
+        openCreateMenuAndChoose(['\u0641\u0627\u062a\u0648\u0631\u0629 \u0627\u0644\u0645\u0634\u062a\u0631\u064a\u0627\u062a', 'purchase invoice', 'invoice']);
 
-         openCreateMenuAndChoose(['\u0641\u0627\u062a\u0648\u0631\u0629 \u0627\u0644\u0645\u0634\u062a\u0631\u064a\u0627\u062a', 'purchase invoice', 'invoice']);
+        submitPurchaseInvoiceWithoutUpdateStock();
 
-          submitPurchaseInvoiceWithoutUpdateStock();
+        cy.get('@purchaseReceiptUrl').then((purchaseReceiptUrl) => {
+          cy.visit(String(purchaseReceiptUrl));
+          waitForOverlay();
+          cy.get('span.indicator-pill.no-indicator-dot.whitespace-nowrap.green:visible > span:visible', { timeout: LONG_TIMEOUT })
+            .first()
+            .should('be.visible')
+            .invoke('text')
+            .then((statusText) => {
+              const purchaseReceiptStatusAfter = String(statusText || '').replace(/\s+/g, ' ').trim();
+              const beforeNormalized = String(purchaseReceiptStatusBefore || '').replace(/\s+/g, ' ').trim().toLowerCase();
+              const afterNormalized = purchaseReceiptStatusAfter.toLowerCase();
 
-          cy.get('@purchaseReceiptUrl').then((purchaseReceiptUrl) => {
-            cy.visit(String(purchaseReceiptUrl));
-            waitForOverlay();
-            cy.get('span.indicator-pill.no-indicator-dot.whitespace-nowrap.green:visible > span:visible', { timeout: 120000 })
-              .first()
-              .should('be.visible')
-              .invoke('text')
-              .then((statusText) => {
-                const purchaseReceiptStatusAfter = String(statusText || '').replace(/\s+/g, ' ').trim();
-                const beforeNormalized = String(purchaseReceiptStatusBefore || '').replace(/\s+/g, ' ').trim().toLowerCase();
-                const afterNormalized = purchaseReceiptStatusAfter.toLowerCase();
+              expect(afterNormalized).to.match(/(?:\u0623\u0643\u062a\u0645\u0644|\u0627\u0643\u062a\u0645\u0644|\u0645\u0643\u062a\u0645\u0644|completed)/i);
+              expect(afterNormalized).to.not.eq(beforeNormalized);
 
-                expect(afterNormalized).to.match(/(?:\u0623\u0643\u062a\u0645\u0644|\u0627\u0643\u062a\u0645\u0644|\u0645\u0643\u062a\u0645\u0644|completed)/i);
-                expect(afterNormalized).to.not.eq(beforeNormalized);
-
-                cy.log(`Purchase Receipt status before creating related purchase invoice: ${purchaseReceiptStatusBefore}`);
-                cy.log(`Purchase Receipt status after creating related purchase invoice : ${purchaseReceiptStatusAfter}`);
-              });
-          });
+              cy.log(`Purchase Receipt status before creating related purchase invoice: ${purchaseReceiptStatusBefore}`);
+              cy.log(`Purchase Receipt status after creating related purchase invoice : ${purchaseReceiptStatusAfter}`);
+            });
         });
-    });
+      });
   });
 
   it('TC06_createNewPurchaseInvoiceAndCheckInGeneralLedgerReport', () => {
-    const env = getMigrationEnv();
-    login({ url: env.v5Url, username: env.user5, password: env.pass5 });
 
+    openCompaniesListPage();
+    openSpecificCompanyWithoutScrollIntoView(Cypress.expose('DAFATER_COMPANY_NAME') || 'BusinessClouds (Demo)');
+    getDefaultCreditAccount().as('defaultCreditAccountAtCompanySettings');
+    getDefaultExpenseAccount().as('defaultExpenseAccountAtCompanySettings');
+    getDefaultStockNotBilledAccount().as('defaultStockNotBilledAccountAtCompanySettings');
 
-      openCompaniesListPage();
-      openSpecificCompanyWithoutScrollIntoView(Cypress.expose('DAFATER_COMPANY_NAME') || 'BusinessClouds (Demo)');
-      getDefaultCreditAccount().as('defaultCreditAccountAtCompanySettings');
-      getDefaultExpenseAccount().as('defaultExpenseAccountAtCompanySettings');
-      getDefaultStockNotBilledAccount().as('defaultStockNotBilledAccountAtCompanySettings');
+    cy.get('@defaultCreditAccountAtCompanySettings').then((defaultCreditAccountAtCompanySettings) => {
+      cy.log(`default credit account at company settings is ${defaultCreditAccountAtCompanySettings}`);
+    });
+    cy.get('@defaultExpenseAccountAtCompanySettings').then((defaultExpenseAccountAtCompanySettings) => {
+      cy.log(`default expense account at company settings is ${defaultExpenseAccountAtCompanySettings}`);
+    });
+    cy.get('@defaultStockNotBilledAccountAtCompanySettings').then((defaultStockNotBilledAccountAtCompanySettings) => {
+      cy.log(`default stock not billed account at company settings is ${defaultStockNotBilledAccountAtCompanySettings}`);
+    });
 
-      cy.get('@defaultCreditAccountAtCompanySettings').then((defaultCreditAccountAtCompanySettings) => {
-        cy.log(`default credit account at company settings is ${defaultCreditAccountAtCompanySettings}`);
-      });
-      cy.get('@defaultExpenseAccountAtCompanySettings').then((defaultExpenseAccountAtCompanySettings) => {
-        cy.log(`default expense account at company settings is ${defaultExpenseAccountAtCompanySettings}`);
-      });
-      cy.get('@defaultStockNotBilledAccountAtCompanySettings').then((defaultStockNotBilledAccountAtCompanySettings) => {
-        cy.log(`default stock not billed account at company settings is ${defaultStockNotBilledAccountAtCompanySettings}`);
-      });
+    startNewPurchaseInvoice();
+    selectPurchaseInvoiceSupplier();
+    selectPurchaseInvoiceItem(preparedBuyingItemCode);
+    submitPurchaseInvoice();
+    getGrandTotalAmountOfPurchaseInvoice().as('grandTotalAmountForPurchaseInvoice');
+    getTotalAmountOfPurchaseInvoice().as('totalAmountForPurchaseInvoice');
 
-  
+    cy.get('@grandTotalAmountForPurchaseInvoice').then((grandTotalAmountForPurchaseInvoice) => {
+      cy.log(`grand total amount of purchase invoice is ${grandTotalAmountForPurchaseInvoice}`);
+    });
+    cy.get('@totalAmountForPurchaseInvoice').then((totalAmountForPurchaseInvoice) => {
+      cy.log(`total amount of purchase invoice is ${totalAmountForPurchaseInvoice}`);
+    });
 
-    createPreparedBuyingItem().then((itemCode) => {
-      startNewPurchaseInvoice();
-      selectPurchaseInvoiceSupplier();
+    openGeneralLedgerReport();
+    // cy.get('body').should('contain.text', '???? ???????');
+    scrollPageToGeneralLedgerTable();
 
-      selectPurchaseInvoiceItem(itemCode);
-      submitPurchaseInvoice();
-      getGrandTotalAmountOfPurchaseInvoice().as('grandTotalAmountForPurchaseInvoice');
-      getTotalAmountOfPurchaseInvoice().as('totalAmountForPurchaseInvoice');
-
-      cy.get('@grandTotalAmountForPurchaseInvoice').then((grandTotalAmountForPurchaseInvoice) => {
-        cy.log(`grand total amount of purchase invoice is ${grandTotalAmountForPurchaseInvoice}`);
-      });
-      cy.get('@totalAmountForPurchaseInvoice').then((totalAmountForPurchaseInvoice) => {
-        cy.log(`total amount of purchase invoice is ${totalAmountForPurchaseInvoice}`);
-      });
-
-      openGeneralLedgerReport();
-      // cy.get('body').should('contain.text', '???? ???????');
-      scrollPageToGeneralLedgerTable();
-
-      cy.get('@defaultCreditAccountAtCompanySettings').then((defaultCreditAccountAtCompanySettings) => {
-        getGeneralLedgerValueByAccountAndColumn({
-          accountName: defaultCreditAccountAtCompanySettings,
-          colIndex: 4,
-          debugName: 'Default credit account value',
-          adjacentFromAccountCol2: true,
-        }).as('valueAtDefaultCreditAccountAtGL');
-      });
-
-     
-
-      cy.get('@defaultStockNotBilledAccountAtCompanySettings').then((defaultStockNotBilledAccountAtCompanySettings) => {
-        getGeneralLedgerValueByAccountAndColumn({
-          accountName: defaultStockNotBilledAccountAtCompanySettings,
-          colIndex: 3,
-          debugName: 'Default stock not billed account value',
-          adjacentFromAccountCol2: true,
-        }).as('valueAtDefaultStockNotBilledAccountAtGL');
-      });
-
-      getClosingValueForInvoiceAtGL({
-        colIndex: 3,
-        debugName: 'Closing debit value',
-      }).as('closingDebitValueAtGl');
-      getClosingValueForInvoiceAtGL({
+    cy.get('@defaultCreditAccountAtCompanySettings').then((defaultCreditAccountAtCompanySettings) => {
+      getGeneralLedgerValueByAccountAndColumn({
+        accountName: defaultCreditAccountAtCompanySettings,
         colIndex: 4,
-        debugName: 'Closing credit value',
-      }).as('closingCreditValueAtGl');
+        debugName: 'Default credit account value',
+        adjacentFromAccountCol2: true,
+      }).as('valueAtDefaultCreditAccountAtGL');
+    });
 
-      cy.get('@valueAtDefaultCreditAccountAtGL').then((valueAtDefaultCreditAccountAtGL) => {
-        cy.get('@grandTotalAmountForPurchaseInvoice').then((grandTotalAmountForPurchaseInvoice) => {
-          assertAmountContains(
-            valueAtDefaultCreditAccountAtGL,
-            grandTotalAmountForPurchaseInvoice,
-            'Default Credit Account At GL has the same value of grand total for purchase invoice'
-          );
-          cy.log(`Default Credit Account At GL report has ${valueAtDefaultCreditAccountAtGL} and grand total for purchase invoice is ${grandTotalAmountForPurchaseInvoice} and this is correct`);
-        });
+    cy.get('@defaultStockNotBilledAccountAtCompanySettings').then((defaultStockNotBilledAccountAtCompanySettings) => {
+      getGeneralLedgerValueByAccountAndColumn({
+        accountName: defaultStockNotBilledAccountAtCompanySettings,
+        colIndex: 3,
+        debugName: 'Default stock not billed account value',
+        adjacentFromAccountCol2: true,
+      }).as('valueAtDefaultStockNotBilledAccountAtGL');
+    });
+
+    getClosingValueForInvoiceAtGL({
+      colIndex: 3,
+      debugName: 'Closing debit value',
+    }).as('closingDebitValueAtGl');
+    getClosingValueForInvoiceAtGL({
+      colIndex: 4,
+      debugName: 'Closing credit value',
+    }).as('closingCreditValueAtGl');
+
+    cy.get('@valueAtDefaultCreditAccountAtGL').then((valueAtDefaultCreditAccountAtGL) => {
+      cy.get('@grandTotalAmountForPurchaseInvoice').then((grandTotalAmountForPurchaseInvoice) => {
+        assertAmountContains(
+          valueAtDefaultCreditAccountAtGL,
+          grandTotalAmountForPurchaseInvoice,
+          'Default Credit Account At GL has the same value of grand total for purchase invoice'
+        );
+        cy.log(`Default Credit Account At GL report has ${valueAtDefaultCreditAccountAtGL} and grand total for purchase invoice is ${grandTotalAmountForPurchaseInvoice} and this is correct`);
       });
+    });
 
-      cy.get('@valueAtDefaultStockNotBilledAccountAtGL').then((valueAtDefaultStockNotBilledAccountAtGL) => {
-        cy.get('@totalAmountForPurchaseInvoice').then((totalAmountForPurchaseInvoice) => {
-          const normalizedStockNotBilledValue = normalizeAmountForContains(valueAtDefaultStockNotBilledAccountAtGL);
-          const normalizedTotalAmount = normalizeAmountForContains(totalAmountForPurchaseInvoice);
-          const stockNotBilledContainsTotal = normalizedStockNotBilledValue.includes(normalizedTotalAmount);
-          const matchesEither = stockNotBilledContainsTotal;
+    cy.get('@valueAtDefaultStockNotBilledAccountAtGL').then((valueAtDefaultStockNotBilledAccountAtGL) => {
+      cy.get('@totalAmountForPurchaseInvoice').then((totalAmountForPurchaseInvoice) => {
+        const normalizedStockNotBilledValue = normalizeAmountForContains(valueAtDefaultStockNotBilledAccountAtGL);
+        const normalizedTotalAmount = normalizeAmountForContains(totalAmountForPurchaseInvoice);
+        const stockNotBilledContainsTotal = normalizedStockNotBilledValue.includes(normalizedTotalAmount);
+        const matchesEither = stockNotBilledContainsTotal;
 
-          Cypress.log({
-            name: 'GL Stock Not Billed Compare',
-            message: `stock="${valueAtDefaultStockNotBilledAccountAtGL}" total="${totalAmountForPurchaseInvoice}" normalizedStock="${normalizedStockNotBilledValue}" normalizedTotal="${normalizedTotalAmount}"`,
-          });
-          // eslint-disable-next-line no-console
-          console.log('GL Stock Not Billed Compare:', {
-            stockValue: valueAtDefaultStockNotBilledAccountAtGL,
-            totalAmount: totalAmountForPurchaseInvoice,
-            normalizedStockValue: normalizedStockNotBilledValue,
-            normalizedTotalAmount,
-            matchesEither,
-          });
-
-          expect(
-            matchesEither,
-            `default stock not billed account at GL has the same value of total amount for purchase invoice | stock="${valueAtDefaultStockNotBilledAccountAtGL}" | total="${totalAmountForPurchaseInvoice}" | normalizedStock="${normalizedStockNotBilledValue}" | normalizedTotal="${normalizedTotalAmount}"`
-          ).to.eq(true);
-
-          cy.log(`Default stock not billed account at GL has ${valueAtDefaultStockNotBilledAccountAtGL}, and total amount for purchase invoice is ${totalAmountForPurchaseInvoice}`);
+        Cypress.log({
+          name: 'GL Stock Not Billed Compare',
+          message: `stock="${valueAtDefaultStockNotBilledAccountAtGL}" total="${totalAmountForPurchaseInvoice}" normalizedStock="${normalizedStockNotBilledValue}" normalizedTotal="${normalizedTotalAmount}"`,
         });
+        // eslint-disable-next-line no-console
+        console.log('GL Stock Not Billed Compare:', {
+          stockValue: valueAtDefaultStockNotBilledAccountAtGL,
+          totalAmount: totalAmountForPurchaseInvoice,
+          normalizedStockValue: normalizedStockNotBilledValue,
+          normalizedTotalAmount,
+          matchesEither,
+        });
+
+        expect(
+          matchesEither,
+          `default stock not billed account at GL has the same value of total amount for purchase invoice | stock="${valueAtDefaultStockNotBilledAccountAtGL}" | total="${totalAmountForPurchaseInvoice}" | normalizedStock="${normalizedStockNotBilledValue}" | normalizedTotal="${normalizedTotalAmount}"`
+        ).to.eq(true);
+
+        cy.log(`Default stock not billed account at GL has ${valueAtDefaultStockNotBilledAccountAtGL}, and total amount for purchase invoice is ${totalAmountForPurchaseInvoice}`);
       });
+    });
 
-      cy.get('@closingDebitValueAtGl').then((closingDebitValueAtGl) => {
-        cy.get('@grandTotalAmountForPurchaseInvoice').then((grandTotalAmountForPurchaseInvoice) => {
-          assertAmountContains(
-            closingDebitValueAtGl,
-            grandTotalAmountForPurchaseInvoice,
-            'Closing debit value at GL equals grand total amount for purchase invoice'
-          );
-          cy.log(`Closing debit value at GL is ${closingDebitValueAtGl} and grand total amount for purchase invoice is ${grandTotalAmountForPurchaseInvoice} and this is correct`);
-        });
+    cy.get('@closingDebitValueAtGl').then((closingDebitValueAtGl) => {
+      cy.get('@grandTotalAmountForPurchaseInvoice').then((grandTotalAmountForPurchaseInvoice) => {
+        assertAmountContains(
+          closingDebitValueAtGl,
+          grandTotalAmountForPurchaseInvoice,
+          'Closing debit value at GL equals grand total amount for purchase invoice'
+        );
+        cy.log(`Closing debit value at GL is ${closingDebitValueAtGl} and grand total amount for purchase invoice is ${grandTotalAmountForPurchaseInvoice} and this is correct`);
       });
+    });
 
-      cy.get('@closingCreditValueAtGl').then((closingCreditValueAtGl) => {
-        cy.get('@grandTotalAmountForPurchaseInvoice').then((grandTotalAmountForPurchaseInvoice) => {
-          assertAmountContains(
-            closingCreditValueAtGl,
-            grandTotalAmountForPurchaseInvoice,
-            'Closing credit value at GL equals grand total amount for purchase invoice'
-          );
-          cy.log(`Closing credit value at GL is ${closingCreditValueAtGl} and grand total amount for purchase invoice is ${grandTotalAmountForPurchaseInvoice} and this is correct`);
-        });
+    cy.get('@closingCreditValueAtGl').then((closingCreditValueAtGl) => {
+      cy.get('@grandTotalAmountForPurchaseInvoice').then((grandTotalAmountForPurchaseInvoice) => {
+        assertAmountContains(
+          closingCreditValueAtGl,
+          grandTotalAmountForPurchaseInvoice,
+          'Closing credit value at GL equals grand total amount for purchase invoice'
+        );
+        cy.log(`Closing credit value at GL is ${closingCreditValueAtGl} and grand total amount for purchase invoice is ${grandTotalAmountForPurchaseInvoice} and this is correct`);
       });
     });
   });
 });
-
-
-

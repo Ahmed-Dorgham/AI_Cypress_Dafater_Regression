@@ -54,6 +54,7 @@ describe('PosViewTest (Migrated from Selenium)', () => {
 
 
     openSalesInvoicesList();
+    cy.reload();
     // clickNewPrimaryAction();
     clickNewPrimaryAction('إضافة فاتورة المبيعات');
 

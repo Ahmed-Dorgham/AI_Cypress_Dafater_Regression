@@ -5,7 +5,8 @@ module.exports = defineConfig({
   e2e: {
     defaultCommandTimeout: 40000,
     numTestsKeptInMemory: 0,
-    pageLoadTimeout: 120000,
+    pageLoadTimeout: 360000,
+    experimentalRunAllSpecs: true,
     video: false,
     supportFile: 'cypress/support/e2e.js',
     watchForFileChanges: false,

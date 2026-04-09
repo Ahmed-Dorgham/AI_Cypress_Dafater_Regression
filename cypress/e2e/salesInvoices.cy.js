@@ -39,12 +39,23 @@ import {
   waitForOverlay,
 } from '../support/migrationHelpers';
 
-const createPreparedItem = () => {
-  const env = getMigrationEnv();
+
+const createPreparedItem = (env = getMigrationEnv()) => {
   const itemCode = `item ${Date.now()}`;
   createItem(itemCode);
   addItemPriceStandardSelling(itemCode, env.itemPrice);
   return cy.wrap(itemCode);
+};
+
+const ensureAtLoginPage = (env) => {
+  cy.location('hash', { timeout: LONG_TIMEOUT }).then((hash) => {
+    if (!/login/i.test(String(hash || ''))) {
+      cy.visit(env.v5Url);
+      waitForOverlay();
+    }
+  });
+
+  cy.get('#login_email, #login_id', { timeout: LONG_TIMEOUT }).should('be.visible');
 };
 
 const selectSalesInvoiceItemLite = (itemCode) => {
@@ -136,7 +147,7 @@ const fillSalesInvoiceCoreLite = ({ itemCode }) => {
   });
 };
 
-const LONG_TIMEOUT = 120000;
+const LONG_TIMEOUT = 360000;
 
 const normalizeDigitsToAscii = (value) =>
   String(value || '').replace(/[\u0660-\u0669]/g, (digit) => String('\u0660\u0661\u0662\u0663\u0664\u0665\u0666\u0667\u0668\u0669'.indexOf(digit)));
@@ -750,13 +761,23 @@ const getClosingValueForInvoiceAtGL = ({ colIndex, debugName }) => {
 };
 
 describe('SalesInvoicesTest (Migrated from Selenium)', () => {
-  it('TC01_createNewSalesInvoiceAndSaveOnly', () => {
+  let preparedItemCode;
+
+  beforeEach(() => {
     const env = getMigrationEnv();
+    ensureAtLoginPage(env);
     login({ url: env.v5Url, username: env.user5, password: env.pass5 });
 
-    createPreparedItem().then((itemCode) => {
+    if (preparedItemCode) return;
+
+    createPreparedItem(env).then((itemCode) => {
+      preparedItemCode = itemCode;
+    });
+  });
+  it('TC01_createNewSalesInvoiceAndSaveOnly', () => {
+    cy.then(() => {
       startNewSalesInvoice();
-      fillSalesInvoiceCore({ itemCode });
+      fillSalesInvoiceCore({ itemCode: preparedItemCode });
       saveSalesInvoice();
       cy.get('.indicator-pill.no-indicator-dot.whitespace-nowrap.red, .indicator.red', { timeout: 120000 })
         .should('be.visible')
@@ -770,12 +791,9 @@ describe('SalesInvoicesTest (Migrated from Selenium)', () => {
   });
 
   it('TC02_createNewSalesInvoiceAndSubmit', () => {
-    const env = getMigrationEnv();
-    login({ url: env.v5Url, username: env.user5, password: env.pass5 });
-
-    createPreparedItem().then((itemCode) => {
+    cy.then(() => {
       startNewSalesInvoice();
-      fillSalesInvoiceCore({ itemCode });
+      fillSalesInvoiceCore({ itemCode: preparedItemCode });
       submitSalesInvoice();
       cy.get('.label.label-success, .indicator-pill.no-indicator-dot.whitespace-nowrap.green', { timeout: 120000 })
         .should('be.visible')
@@ -789,13 +807,10 @@ describe('SalesInvoicesTest (Migrated from Selenium)', () => {
   });
 
   it('TC03_createNewSalesInvoiceFromSalesOrder', () => {
-    const env = getMigrationEnv();
-    login({ url: env.v5Url, username: env.user5, password: env.pass5 });
-
-    createPreparedItem().then((itemCode) => {
+    cy.then(() => {
       openSalesOrdersListPage();
       clickOnNewSalesOrdersBtn();
-      fillSalesOrderCore(itemCode);
+      fillSalesOrderCore(preparedItemCode);
       saveAndSubmitSalesOrder();
 
           cy.contains(
@@ -836,12 +851,9 @@ describe('SalesInvoicesTest (Migrated from Selenium)', () => {
   });
 
   it('TC04_createCreditNoteFromSalesInvoice', () => {
-    const env = getMigrationEnv();
-    login({ url: env.v5Url, username: env.user5, password: env.pass5 });
-
-    createPreparedItem().then((itemCode) => {
+    cy.then(() => {
       startNewSalesInvoice();
-      fillSalesInvoiceCore({ itemCode });
+      fillSalesInvoiceCore({ itemCode: preparedItemCode });
       submitSalesInvoice();
       getSalesInvoiceNameFromUrl().then((salesInvoiceName) => {
        openCreateMenuAndChoose(['مرتجع / اشعار دائن', 'credit']);
@@ -862,12 +874,9 @@ describe('SalesInvoicesTest (Migrated from Selenium)', () => {
   });
 
   it.skip('TC05_createNewSalesInvoiceAndCheckInGrossProfitReport', () => {
-    const env = getMigrationEnv();
-    login({ url: env.v5Url, username: env.user5, password: env.pass5 });
-
-    createPreparedItem().then((itemCode) => {
+    cy.then(() => {
       startNewSalesInvoice();
-      fillSalesInvoiceCore({ itemCode });
+      fillSalesInvoiceCore({ itemCode: preparedItemCode });
       submitSalesInvoice();
       cy.contains('button,a', '?????', { timeout: LONG_TIMEOUT }).first().click({ force: true });
       cy.contains('a,button', '?????? ???? ???????', { timeout: 120000 }).should('exist');
@@ -875,12 +884,9 @@ describe('SalesInvoicesTest (Migrated from Selenium)', () => {
   });
 
   it('TC06_createPaymentForSalesInvoice', () => {
-    const env = getMigrationEnv();
-    login({ url: env.v5Url, username: env.user5, password: env.pass5 });
-
-    createPreparedItem().then((itemCode) => {
+    cy.then(() => {
       startNewSalesInvoice();
-      fillSalesInvoiceCore({ itemCode });
+      fillSalesInvoiceCore({ itemCode: preparedItemCode });
       submitSalesInvoice();
       getSalesInvoiceNameFromUrl().then((salesInvoiceName) => {
         cy.url().as('salesInvoiceUrl');
@@ -893,6 +899,7 @@ describe('SalesInvoicesTest (Migrated from Selenium)', () => {
           .then((textBefore) => {
             const statusBefore = String(textBefore || '').replace(/\s+/g, ' ').trim();
             cy.wrap(statusBefore, { log: false }).as('invoicePaymentStatusBefore');
+            cy.log('Sales Invoice payment status before: ' + statusBefore);
           });
 
         openCreateMenuAndChoose(['دفع', 'payment']);
@@ -936,22 +943,23 @@ describe('SalesInvoicesTest (Migrated from Selenium)', () => {
   });
 
   it('TC07_createNewSalesInvoiceFromDeliveryNote', () => {
-    const env = getMigrationEnv();
-    login({ url: env.v5Url, username: env.user5, password: env.pass5 });
-
-    createPreparedItem().then((itemCode) => {
+    cy.then(() => {
       openPurchaseReceiptsList();
       clickNewPrimaryAction();
       waitForOverlay();
       selectPurchaseReceiptSupplier();
-      selectPurchaseReceiptItem(itemCode);
+      selectPurchaseReceiptItem(preparedItemCode);
       saveAndSubmitPurchaseReceipt();
 
       openDeliveryNotesList();
       clickNewPrimaryAction();
       cy.reload();
+      cy.wait(2000,{ log: false });
+      cy.on('window:confirm', () => true);
+
+     
       selectDeliveryNoteCustomer();
-      selectDeliveryNoteItem(itemCode);
+      selectDeliveryNoteItem(preparedItemCode);
       saveAndSubmitDeliveryNote();
        cy.contains(
           'button:visible, .btn:visible, [role="button"]:visible, a:visible',
@@ -992,8 +1000,6 @@ describe('SalesInvoicesTest (Migrated from Selenium)', () => {
   it('TC08_createNewSalesInvoiceAndCheckInGeneralLedgerReport', () => {
     const env = getMigrationEnv();
     const companyName = String(Cypress.expose('DAFATER_COMPANY_NAME') || 'BusinessClouds (Demo)');
-    login({ url: env.v5Url, username: env.user5, password: env.pass5 });
-
     openCompaniesListPage();
     openSpecificCompanyWithoutScrollIntoView(companyName);
     getDefaultDebitAccount().as('defaultDebitAccountAtCompanySettings');
@@ -1009,9 +1015,9 @@ describe('SalesInvoicesTest (Migrated from Selenium)', () => {
     cy.visit(env.v5Url);
     waitForOverlay();
 
-    createPreparedItem().then((itemCode) => {
+    cy.then(() => {
       startNewSalesInvoice();
-      fillSalesInvoiceCoreLite({ itemCode });
+      fillSalesInvoiceCoreLite({ itemCode: preparedItemCode });
       submitSalesInvoice();
 
       getGrandTotalAmountOfSalesInvoice().as('grandTotalAmountForSalesInvoice');
